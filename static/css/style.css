@@ -433,9 +433,15 @@ h1, .brand {
     color: var(--ink);
 }
 
-.project-link {
+.project-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
     margin-top: auto;
     padding-top: 0.75rem;
+}
+
+.project-link {
     font-size: 0.85rem;
     font-weight: 600;
     color: var(--accent-dark);
@@ -443,6 +449,19 @@ h1, .brand {
 }
 
 .project-link:hover {
+    text-decoration: underline;
+}
+
+.timeline-link {
+    display: inline-block;
+    margin-bottom: 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent-dark);
+    text-decoration: none;
+}
+
+.timeline-link:hover {
     text-decoration: underline;
 }
 

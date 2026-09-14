@@ -39,8 +39,18 @@
                             {% if project.technologies %}
                                 <p class="project-tech">{{ project.technologies }}</p>
                             {% endif %}
-                            {% if project.repository_url %}
-                                <a href="{{ project.repository_url }}" class="project-link" target="_blank" rel="noopener">Lihat repositori</a>
+                            {% if project.repository_url or project.report_url or project.deployment_url %}
+                                <div class="project-links">
+                                    {% if project.repository_url %}
+                                        <a href="{{ project.repository_url }}" class="project-link" target="_blank" rel="noopener">Lihat repositori</a>
+                                    {% endif %}
+                                    {% if project.report_url %}
+                                        <a href="{{ project.report_url }}" class="project-link" target="_blank" rel="noopener">Lihat laporan</a>
+                                    {% endif %}
+                                    {% if project.deployment_url %}
+                                        <a href="{{ project.deployment_url }}" class="project-link" target="_blank" rel="noopener">Coba demo</a>
+                                    {% endif %}
+                                </div>
                             {% endif %}
                         </article>
                     {% empty %}

@@ -41,6 +41,9 @@
                                 {% if experience.organization %}
                                     <p class="timeline-org">{{ experience.organization }}</p>
                                 {% endif %}
+                                {% if experience.organization_url %}
+                                    <a href="{{ experience.organization_url }}" class="timeline-link" target="_blank" rel="noopener">Kunjungi situs</a>
+                                {% endif %}
                                 <ul>
                                     <li>{{ experience.description }}</li>
                                 </ul>
