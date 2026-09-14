@@ -89,6 +89,18 @@ class ExperienceTest(PortfolioTestCase):
         self.assertContains(response, str(self.experience.ended_at.year))
         self.assertNotContains(response, "Present")
 
+    def test_experience_page_shows_organization_link(self):
+        self.experience.organization_url = "https://bem.cs.ui.ac.id/"
+        self.experience.save()
+        response = self.client.get(reverse("main:show_experience"))
+
+        self.assertContains(response, self.experience.organization_url)
+
+    def test_experience_without_organization_link(self):
+        response = self.client.get(reverse("main:show_experience"))
+
+        self.assertNotContains(response, "Kunjungi situs")
+
 
 class ProjectTest(PortfolioTestCase):
     def test_project_model(self):
@@ -120,3 +132,18 @@ class ProjectTest(PortfolioTestCase):
         response = self.client.get(reverse("main:show_projects"))
 
         self.assertContains(response, "Belum ada proyek yang ditambahkan.")
+
+    def test_projects_page_shows_external_links(self):
+        self.project.report_url = "https://drive.google.com/file/d/contoh/view"
+        self.project.deployment_url = "https://contoh.itch.io/game"
+        self.project.save()
+        response = self.client.get(reverse("main:show_projects"))
+
+        self.assertContains(response, self.project.report_url)
+        self.assertContains(response, self.project.deployment_url)
+
+    def test_projects_without_external_links(self):
+        response = self.client.get(reverse("main:show_projects"))
+
+        self.assertNotContains(response, "Lihat laporan")
+        self.assertNotContains(response, "Coba demo")
