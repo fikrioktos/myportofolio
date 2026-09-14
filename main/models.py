@@ -19,6 +19,11 @@ class Experience(models.Model):
     description = models.TextField()
     category = models.CharField(max_length=20, choices=EXPERIENCE_CHOICES, default='part-time')
     thumbnail = models.URLField(blank=True, null=True)
+    organization_url = models.URLField(
+        blank=True,
+        null=True,
+        help_text="Situs resmi organisasi atau kepanitiaan, mis. https://bem.cs.ui.ac.id/",
+    )
     started_at = models.DateField()
     ended_at = models.DateField(blank=True, null=True)
 
@@ -44,6 +49,16 @@ class Project(models.Model):
     description = models.TextField()
     technologies = models.CharField(max_length=255, blank=True)
     repository_url = models.URLField(blank=True, null=True)
+    report_url = models.URLField(
+        blank=True,
+        null=True,
+        help_text="Tautan laporan, makalah, atau technical report proyek.",
+    )
+    deployment_url = models.URLField(
+        blank=True,
+        null=True,
+        help_text="Tautan versi live atau demo proyek yang bisa dicoba.",
+    )
     started_at = models.DateField()
     ended_at = models.DateField(blank=True, null=True)
 
