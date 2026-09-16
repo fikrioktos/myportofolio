@@ -5,7 +5,13 @@
         <section class="projects-section" id="projects">
             <div class="container">
                 <p class="section-kicker">Yang pernah saya bangun</p>
-                <h1>Projects</h1>
+                <div class="project-header">
+                    <h1>Projects</h1>
+                    <a href="{% url 'main:create_project' %}" class="button project-add-button">
+                        <span aria-hidden="true">+</span>
+                        Tambah Proyek
+                    </a>
+                </div>
 
                 <div class="projects-grid">
                     {% for project in project_list %}

@@ -147,3 +147,70 @@ class ProjectTest(PortfolioTestCase):
 
         self.assertNotContains(response, "Lihat laporan")
         self.assertNotContains(response, "Coba demo")
+
+
+class ProjectFormTest(PortfolioTestCase):
+    def test_create_project_url_is_accessible(self):
+        response = self.client.get(reverse("main:create_project"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "projects_form.html")
+
+    def test_create_project_form_shows_fields(self):
+        response = self.client.get(reverse("main:create_project"))
+
+        for field in ["title", "category", "description", "technologies", "started_at"]:
+            self.assertContains(response, f'name="{field}"')
+
+    def test_create_project_saves_data_and_redirects(self):
+        response = self.client.post(
+            reverse("main:create_project"),
+            {
+                "title": "Aplikasi Catatan Kuliah",
+                "category": "course",
+                "description": "Aplikasi pencatat jadwal dan tugas kuliah.",
+                "technologies": "Django, HTML5, CSS3",
+                "started_at": "2026-09-01",
+            },
+        )
+
+        self.assertRedirects(response, reverse("main:show_projects"))
+        self.assertTrue(Project.objects.filter(title="Aplikasi Catatan Kuliah").exists())
+
+    def test_new_project_appears_on_projects_page(self):
+        response = self.client.post(
+            reverse("main:create_project"),
+            {
+                "title": "Aplikasi Catatan Kuliah",
+                "description": "Aplikasi pencatat jadwal dan tugas kuliah.",
+                "started_at": "2026-09-01",
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Aplikasi Catatan Kuliah")
+
+    def test_invalid_project_form_does_not_save(self):
+        response = self.client.post(
+            reverse("main:create_project"),
+            {"title": "", "description": "", "started_at": ""},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "projects_form.html")
+        self.assertEqual(Project.objects.count(), 1)
+
+    def test_ended_at_before_started_at_is_rejected(self):
+        response = self.client.post(
+            reverse("main:create_project"),
+            {
+                "title": "Proyek Salah Tanggal",
+                "description": "Proyek dengan periode terbalik.",
+                "started_at": "2026-09-01",
+                "ended_at": "2026-08-01",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "tidak boleh lebih awal")
+        self.assertFalse(Project.objects.filter(title="Proyek Salah Tanggal").exists())
