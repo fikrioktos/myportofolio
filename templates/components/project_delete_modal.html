@@ -31,6 +31,16 @@
             <strong>{{ project.title }}</strong>?
         </p>
 
+        <div class="form-group">
+            <label for="access-code-{{ project.id }}">Kode Akses</label>
+            <input type="password"
+                   name="access_code"
+                   id="access-code-{{ project.id }}"
+                   placeholder="Kode rahasia portofolio"
+                   required>
+            <p class="form-help">Hanya pemilik portofolio yang tahu kode ini.</p>
+        </div>
+
         <div class="project-delete-modal__actions">
             <button type="button"
                     class="button button-secondary"

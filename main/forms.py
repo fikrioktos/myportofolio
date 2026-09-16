@@ -1,7 +1,42 @@
 from django import forms
+from django.conf import settings
+
 from main.models import Project
+
+ACCESS_CODE_NOT_CONFIGURED = "Kode akses belum dikonfigurasi di server."
+ACCESS_CODE_WRONG = "Kode akses salah."
+
+
+def access_code_error(supplied_code):
+    """Balikin pesan error kalau kode akses tidak valid, atau None kalau valid.
+
+    Dipakai dua tempat: field password di ProjectForm, dan tombol hapus di dalam
+    modal konfirmasi (main/views.py). Selama PORTFOLIO_ACCESS_CODE kosong,
+    semua request tulis ditolak.
+    """
+    expected_code = settings.PORTFOLIO_ACCESS_CODE
+
+    if not expected_code:
+        return ACCESS_CODE_NOT_CONFIGURED
+
+    if supplied_code != expected_code:
+        return ACCESS_CODE_WRONG
+
+    return None
+
+
 class ProjectForm(forms.ModelForm):
     """Form tambah proyek, dibangun otomatis dari model Project."""
+
+    access_code = forms.CharField(
+        label="Kode Akses",
+        required=False,
+        widget=forms.PasswordInput(
+            attrs={"placeholder": "Kode rahasia portofolio"}
+        ),
+        help_text="Hanya pemilik portofolio yang tahu kode ini.",
+    )
+
     class Meta:
         model = Project
         fields = [
@@ -57,3 +92,20 @@ class ProjectForm(forms.ModelForm):
                 "ended_at", "Tanggal selesai tidak boleh lebih awal dari tanggal mulai."
             )
         return cleaned_data
+
+    def clean_access_code(self):
+        supplied_code = self.cleaned_data.get("access_code", "")
+        error = access_code_error(supplied_code)
+
+        # Kode yang belum di-set di server harus kelihatan penyebabnya, bukan
+        # tertutup pesan "field harus diisi".
+        if error == ACCESS_CODE_NOT_CONFIGURED:
+            raise forms.ValidationError(error)
+
+        if not supplied_code:
+            raise forms.ValidationError("Kode akses wajib diisi.")
+
+        if error:
+            raise forms.ValidationError(error)
+
+        return supplied_code

@@ -2,10 +2,12 @@ from datetime import date
 import json
 import uuid
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from main.models import Experience, Project
+
+TEST_ACCESS_CODE = "kode-uji-portofolio"
 
 
 class PortfolioTestCase(TestCase):
@@ -151,6 +153,7 @@ class ProjectTest(PortfolioTestCase):
         self.assertNotContains(response, "Coba demo")
 
 
+@override_settings(PORTFOLIO_ACCESS_CODE=TEST_ACCESS_CODE)
 class ProjectFormTest(PortfolioTestCase):
     def test_create_project_url_is_accessible(self):
         response = self.client.get(reverse("main:create_project"))
@@ -161,7 +164,14 @@ class ProjectFormTest(PortfolioTestCase):
     def test_create_project_form_shows_fields(self):
         response = self.client.get(reverse("main:create_project"))
 
-        for field in ["title", "category", "description", "technologies", "started_at"]:
+        for field in [
+            "title",
+            "category",
+            "description",
+            "technologies",
+            "started_at",
+            "access_code",
+        ]:
             self.assertContains(response, f'name="{field}"')
 
     def test_create_project_saves_data_and_redirects(self):
@@ -173,6 +183,7 @@ class ProjectFormTest(PortfolioTestCase):
                 "description": "Aplikasi pencatat jadwal dan tugas kuliah.",
                 "technologies": "Django, HTML5, CSS3",
                 "started_at": "2026-09-01",
+                "access_code": TEST_ACCESS_CODE,
             },
         )
 
@@ -184,13 +195,18 @@ class ProjectFormTest(PortfolioTestCase):
             reverse("main:create_project"),
             {
                 "title": "Aplikasi Catatan Kuliah",
+                "category": "course",
                 "description": "Aplikasi pencatat jadwal dan tugas kuliah.",
                 "started_at": "2026-09-01",
+                "access_code": TEST_ACCESS_CODE,
             },
             follow=True,
         )
 
         self.assertContains(response, "Aplikasi Catatan Kuliah")
+        self.assertTrue(
+            Project.objects.filter(title="Aplikasi Catatan Kuliah").exists()
+        )
 
     def test_invalid_project_form_does_not_save(self):
         response = self.client.post(
@@ -285,6 +301,7 @@ class ProjectDataDeliveryTest(PortfolioTestCase):
         self.assertNotContains(response, self.other_project.title)
 
 
+@override_settings(PORTFOLIO_ACCESS_CODE=TEST_ACCESS_CODE)
 class ProjectDeleteTest(PortfolioTestCase):
     def test_projects_page_shows_delete_modal(self):
         response = self.client.get(reverse("main:show_projects"))
@@ -294,13 +311,15 @@ class ProjectDeleteTest(PortfolioTestCase):
             response, f'popovertarget="delete-project-{self.project.id}"'
         )
         self.assertContains(response, "Hapus Proyek?")
+        self.assertContains(response, 'name="access_code"')
         self.assertContains(
             response, reverse("main:delete_project", args=[self.project.id])
         )
 
     def test_delete_project_removes_data_and_redirects(self):
         response = self.client.post(
-            reverse("main:delete_project", args=[self.project.id])
+            reverse("main:delete_project", args=[self.project.id]),
+            {"access_code": TEST_ACCESS_CODE},
         )
 
         self.assertRedirects(response, reverse("main:show_projects"))
@@ -321,3 +340,104 @@ class ProjectDeleteTest(PortfolioTestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+
+@override_settings(PORTFOLIO_ACCESS_CODE=TEST_ACCESS_CODE)
+class AccessCodeTest(PortfolioTestCase):
+    """Operasi tulis wajib pakai kode akses, lewat field form atau header."""
+
+    def test_create_project_requires_code(self):
+        response = self.client.post(
+            reverse("main:create_project"),
+            {
+                "title": "Proyek Tanpa Kode",
+                "category": "personal",
+                "description": "Nggak boleh tersimpan.",
+                "started_at": "2026-09-01",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Kode akses wajib diisi.")
+        self.assertFalse(Project.objects.filter(title="Proyek Tanpa Kode").exists())
+
+    def test_create_project_rejects_wrong_code(self):
+        response = self.client.post(
+            reverse("main:create_project"),
+            {
+                "title": "Proyek Kode Ngawur",
+                "category": "personal",
+                "description": "Nggak boleh tersimpan.",
+                "started_at": "2026-09-01",
+                "access_code": "kode-ngawur",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Kode akses salah.")
+        self.assertFalse(
+            Project.objects.filter(title="Proyek Kode Ngawur").exists()
+        )
+
+    def test_create_project_accepts_code_from_header(self):
+        response = self.client.post(
+            reverse("main:create_project"),
+            {
+                "title": "Proyek Lewat Header",
+                "category": "personal",
+                "description": "Dikirim pakai header X-Portfolio-Key.",
+                "started_at": "2026-09-01",
+            },
+            headers={"X-Portfolio-Key": TEST_ACCESS_CODE},
+        )
+
+        self.assertRedirects(response, reverse("main:show_projects"))
+        self.assertTrue(Project.objects.filter(title="Proyek Lewat Header").exists())
+
+    def test_delete_project_rejects_wrong_code(self):
+        response = self.client.post(
+            reverse("main:delete_project", args=[self.project.id]),
+            {"access_code": "kode-ngawur"},
+        )
+
+        self.assertRedirects(response, reverse("main:show_projects"))
+        self.assertTrue(Project.objects.filter(pk=self.project.id).exists())
+
+    def test_delete_project_accepts_code_from_header(self):
+        response = self.client.post(
+            reverse("main:delete_project", args=[self.project.id]),
+            headers={"X-Portfolio-Key": TEST_ACCESS_CODE},
+        )
+
+        self.assertRedirects(response, reverse("main:show_projects"))
+        self.assertFalse(Project.objects.filter(pk=self.project.id).exists())
+
+
+@override_settings(PORTFOLIO_ACCESS_CODE="")
+class AccessCodeNotConfiguredTest(PortfolioTestCase):
+    """Fail-closed: tanpa kode di environment, semua request tulis ditolak."""
+
+    def test_create_project_is_rejected(self):
+        response = self.client.post(
+            reverse("main:create_project"),
+            {
+                "title": "Proyek Tanpa Konfigurasi",
+                "category": "personal",
+                "description": "Ditolak karena kode akses belum di-set.",
+                "started_at": "2026-09-01",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "belum dikonfigurasi")
+        self.assertFalse(
+            Project.objects.filter(title="Proyek Tanpa Konfigurasi").exists()
+        )
+
+    def test_delete_project_is_rejected(self):
+        response = self.client.post(
+            reverse("main:delete_project", args=[self.project.id])
+        )
+
+        self.assertRedirects(response, reverse("main:show_projects"))
+        self.assertTrue(Project.objects.filter(pk=self.project.id).exists())
