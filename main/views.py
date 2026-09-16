@@ -3,7 +3,7 @@ from django.core import serializers
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
-from main.forms import ProjectForm
+from main.forms import ProjectForm, access_code_error
 from main.models import Experience, Project
 
 
@@ -76,7 +76,15 @@ def show_projects(request):
 
 def create_project(request):
     if request.method == "POST":
-        form = ProjectForm(request.POST)
+        data = request.POST.copy()
+
+        # Request dari curl/Postman bisa mengirim kode akses lewat header, jadi
+        # field password di form tidak perlu diisi.
+        header_code = request.headers.get("X-Portfolio-Key")
+        if header_code:
+            data["access_code"] = header_code
+
+        form = ProjectForm(data)
         if form.is_valid():
             form.save()
             messages.success(request, "Proyek baru berhasil ditambahkan!")
@@ -91,10 +99,23 @@ def create_project(request):
     return render(request, "projects_form.html", context)
 
 
+def _supplied_access_code(request):
+    """Kode akses datang lewat header X-Portfolio-Key atau field form."""
+    return request.headers.get("X-Portfolio-Key") or request.POST.get(
+        "access_code", ""
+    )
+
+
 def delete_project(request, project_id):
     project = get_object_or_404(Project, pk=project_id)
 
     if request.method == "POST":
+        error = access_code_error(_supplied_access_code(request))
+
+        if error:
+            messages.error(request, error)
+            return redirect("main:show_projects")
+
         project.delete()
         messages.success(request, "Proyek berhasil dihapus!")
         return redirect("main:show_projects")

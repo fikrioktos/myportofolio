@@ -21,6 +21,11 @@ ALLOWED_HOSTS = ["localhost", "127.0.0.1", "fikri-okto-myportofolio.pws.cs.ui.ac
 
 CSRF_TRUSTED_ORIGINS = ["https://fikri-okto-myportofolio.pws.cs.ui.ac.id"]
 
+# Kode akses untuk operasi tulis (tambah dan hapus proyek). Nilainya diambil dari
+# environment (.env lokal, atau Environs PWS di produksi) supaya tidak ikut
+# ke-commit ke repo publik. Kalau kosong, semua request tulis ditolak.
+PORTFOLIO_ACCESS_CODE = os.getenv("PORTFOLIO_ACCESS_CODE", "")
+
 PRODUCTION = os.getenv('PRODUCTION', 'False').lower() == 'true'
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
