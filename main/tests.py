@@ -1,5 +1,6 @@
 from datetime import date
 import json
+import uuid
 
 from django.test import TestCase
 from django.urls import reverse
@@ -282,3 +283,41 @@ class ProjectDataDeliveryTest(PortfolioTestCase):
         self.assertContains(response, "Tidak ada proyek dengan nama tersebut.")
         self.assertNotContains(response, self.project.title)
         self.assertNotContains(response, self.other_project.title)
+
+
+class ProjectDeleteTest(PortfolioTestCase):
+    def test_projects_page_shows_delete_modal(self):
+        response = self.client.get(reverse("main:show_projects"))
+
+        self.assertContains(response, f'id="delete-project-{self.project.id}"')
+        self.assertContains(
+            response, f'popovertarget="delete-project-{self.project.id}"'
+        )
+        self.assertContains(response, "Hapus Proyek?")
+        self.assertContains(
+            response, reverse("main:delete_project", args=[self.project.id])
+        )
+
+    def test_delete_project_removes_data_and_redirects(self):
+        response = self.client.post(
+            reverse("main:delete_project", args=[self.project.id])
+        )
+
+        self.assertRedirects(response, reverse("main:show_projects"))
+        self.assertFalse(Project.objects.filter(pk=self.project.id).exists())
+        self.assertEqual(Project.objects.count(), 0)
+
+    def test_delete_project_only_works_with_post(self):
+        response = self.client.get(
+            reverse("main:delete_project", args=[self.project.id])
+        )
+
+        self.assertRedirects(response, reverse("main:show_projects"))
+        self.assertTrue(Project.objects.filter(pk=self.project.id).exists())
+
+    def test_delete_project_with_unknown_id_returns_404(self):
+        response = self.client.post(
+            reverse("main:delete_project", args=[uuid.uuid4()])
+        )
+
+        self.assertEqual(response.status_code, 404)

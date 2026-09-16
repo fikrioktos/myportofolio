@@ -1,7 +1,7 @@
 from django.contrib import messages
 from django.core import serializers
 from django.http import HttpResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 
 from main.forms import ProjectForm
 from main.models import Experience, Project
@@ -89,3 +89,14 @@ def create_project(request):
         "form": form,
     }
     return render(request, "projects_form.html", context)
+
+
+def delete_project(request, project_id):
+    project = get_object_or_404(Project, pk=project_id)
+
+    if request.method == "POST":
+        project.delete()
+        messages.success(request, "Proyek berhasil dihapus!")
+        return redirect("main:show_projects")
+
+    return redirect("main:show_projects")
