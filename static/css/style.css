@@ -477,3 +477,21 @@ h1, .brand {
         grid-template-columns: 1fr;
     }
 }
+
+/* messages */
+.messages {
+    list-style: none;
+    display: grid;
+    gap: 0.5rem;
+    padding: 0.75rem 0;
+}
+
+.message {
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.9rem;
+    background: #fff;
+    color: var(--ink);
+    font-size: 0.95rem;
+}
