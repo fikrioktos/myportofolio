@@ -1,4 +1,5 @@
 from datetime import date
+import json
 
 from django.test import TestCase
 from django.urls import reverse
@@ -214,3 +215,70 @@ class ProjectFormTest(PortfolioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "tidak boleh lebih awal")
         self.assertFalse(Project.objects.filter(title="Proyek Salah Tanggal").exists())
+
+
+class ProjectDataDeliveryTest(PortfolioTestCase):
+    """Endpoint JSON/XML dan halaman projects yang membaca hasil deserialisasi."""
+
+    def setUp(self):
+        super().setUp()
+        self.other_project = Project.objects.create(
+            title="Game Visual Novel",
+            description="Proyek game berbasis Ren'Py.",
+            started_at=date(2025, 3, 1),
+        )
+
+    def test_projects_json_endpoint_returns_json(self):
+        response = self.client.get(reverse("main:get_projects_json"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response["Content-Type"].startswith("application/json"))
+
+        payload = json.loads(response.content.decode("utf-8"))
+        titles = [item["fields"]["title"] for item in payload]
+        self.assertIn(self.project.title, titles)
+
+    def test_projects_json_endpoint_filters_by_title(self):
+        response = self.client.get(
+            reverse("main:get_projects_json"), {"title": "visual"}
+        )
+
+        payload = json.loads(response.content.decode("utf-8"))
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["fields"]["title"], self.other_project.title)
+
+    def test_projects_json_endpoint_returns_empty_list_when_no_match(self):
+        response = self.client.get(
+            reverse("main:get_projects_json"), {"title": "tidak ada"}
+        )
+
+        self.assertEqual(json.loads(response.content.decode("utf-8")), [])
+
+    def test_projects_xml_endpoint_returns_xml(self):
+        response = self.client.get(reverse("main:get_projects_xml"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response["Content-Type"].startswith("application/xml"))
+        self.assertIn(self.project.title, response.content.decode("utf-8"))
+
+    def test_projects_page_has_search_form(self):
+        response = self.client.get(reverse("main:show_projects"))
+
+        self.assertContains(response, 'name="title"')
+
+    def test_projects_page_filters_by_title(self):
+        response = self.client.get(
+            reverse("main:show_projects"), {"title": "visual"}
+        )
+
+        self.assertContains(response, self.other_project.title)
+        self.assertNotContains(response, self.project.title)
+
+    def test_projects_page_shows_message_when_filter_finds_nothing(self):
+        response = self.client.get(
+            reverse("main:show_projects"), {"title": "tidak ada"}
+        )
+
+        self.assertContains(response, "Tidak ada proyek dengan nama tersebut.")
+        self.assertNotContains(response, self.project.title)
+        self.assertNotContains(response, self.other_project.title)
