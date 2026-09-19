@@ -374,6 +374,70 @@ h1, .brand {
     font-size: 2rem;
 }
 
+/* Header section yang sejajar: judul kiri, tombol aksi kanan */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.section-header h1 {
+    margin: 0;
+}
+
+.experience-add-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    white-space: nowrap;
+}
+
+.experience-add-button span {
+    font-size: 1.25rem;
+    line-height: 1;
+}
+
+.experience-form {
+    width: 100%;
+    max-width: 640px;
+}
+
+/* Aksi per-item timeline: ubah (nanti juga hapus) */
+.timeline-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+.timeline-action-link {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-decoration: none;
+    border-bottom: 1px solid currentColor;
+    padding-bottom: 0.1rem;
+}
+
+.timeline-action-link:hover {
+    color: var(--accent-dark);
+}
+
+/* Tombol hapus dalam timeline-actions: lebih kecil dari .button biasa */
+.experience-delete-button {
+    font-size: 0.85rem;
+    padding: 0.25rem 0.6rem;
+    font-weight: 700;
+}
+
+@media (max-width: 600px) {
+    .section-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
 /* Projects section */
 .projects-section {
     padding: 4rem 0;
