@@ -3,7 +3,7 @@ from django.core import serializers
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
-from main.forms import ProjectForm, access_code_error
+from main.forms import ExperienceForm, ProjectForm, access_code_error
 from main.models import Experience, Project
 
 
@@ -21,11 +21,35 @@ def show_main(request):
 
 
 def show_experience(request):
+    json_response = get_experience_json(request)
+    experiences = serializers.deserialize(
+        "json",
+        json_response.content.decode("utf-8"),
+    )
+    experiences = [experience.object for experience in experiences]
+
     context = {
         "name": "Fikri Okto Setiadi",
-        "experience_list": Experience.objects.all(),
+        "experience_list": experiences,
     }
     return render(request, "experience.html", context)
+
+
+def _experiences_list(request):
+    """Daftar pengalaman yang dikirim ke endpoint JSON/XML dan halaman."""
+    return Experience.objects.all().order_by("-started_at")
+
+
+def get_experience_json(request):
+    experiences_json = serializers.serialize("json", _experiences_list(request))
+
+    return HttpResponse(experiences_json, content_type="application/json")
+
+
+def get_experience_xml(request):
+    experiences_xml = serializers.serialize("xml", _experiences_list(request))
+
+    return HttpResponse(experiences_xml, content_type="application/xml")
 
 
 def _projects_matching_query(request):
@@ -121,3 +145,73 @@ def delete_project(request, project_id):
         return redirect("main:show_projects")
 
     return redirect("main:show_projects")
+
+
+def create_experience(request):
+    if request.method == "POST":
+        data = request.POST.copy()
+
+        # Request dari curl/Postman bisa mengirim kode akses lewat header, jadi
+        # field password di form tidak perlu diisi.
+        header_code = request.headers.get("X-Portfolio-Key")
+        if header_code:
+            data["access_code"] = header_code
+
+        form = ExperienceForm(data)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Pengalaman baru berhasil ditambahkan!")
+            return redirect("main:show_experience")
+    else:
+        form = ExperienceForm()
+
+    context = {
+        "name": "Fikri Okto Setiadi",
+        "form": form,
+    }
+    return render(request, "experience_form.html", context)
+
+
+def update_experience(request, experience_id):
+    experience = get_object_or_404(Experience, pk=experience_id)
+
+    if request.method == "POST":
+        data = request.POST.copy()
+
+        # Request dari curl/Postman bisa mengirim kode akses lewat header, jadi
+        # field password di form tidak perlu diisi.
+        header_code = request.headers.get("X-Portfolio-Key")
+        if header_code:
+            data["access_code"] = header_code
+
+        form = ExperienceForm(data, instance=experience)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Pengalaman berhasil diperbarui!")
+            return redirect("main:show_experience")
+    else:
+        form = ExperienceForm(instance=experience)
+
+    context = {
+        "name": "Fikri Okto Setiadi",
+        "form": form,
+        "experience": experience,
+    }
+    return render(request, "experience_form.html", context)
+
+
+def delete_experience(request, experience_id):
+    experience = get_object_or_404(Experience, pk=experience_id)
+
+    if request.method == "POST":
+        error = access_code_error(_supplied_access_code(request))
+
+        if error:
+            messages.error(request, error)
+            return redirect("main:show_experience")
+
+        experience.delete()
+        messages.success(request, "Pengalaman berhasil dihapus!")
+        return redirect("main:show_experience")
+
+    return redirect("main:show_experience")

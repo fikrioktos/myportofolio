@@ -5,7 +5,13 @@
         <section class="experience-section" id="experience">
             <div class="container">
                 <p class="section-kicker">Perjalanan saya sejauh ini</p>
-                <h1>Experience</h1>
+                <div class="section-header">
+                    <h1>Experience</h1>
+                    <a href="{% url 'main:create_experience' %}" class="button experience-add-button">
+                        <span aria-hidden="true">+</span>
+                        Tambah Experience
+                    </a>
+                </div>
 
                 <div class="timeline">
                     {% for experience in experience_list %}
@@ -27,6 +33,10 @@
                                 <ul>
                                     <li>{{ experience.description }}</li>
                                 </ul>
+                                <div class="timeline-actions">
+                                    <a href="{% url 'main:update_experience' experience.id %}" class="timeline-action-link">Ubah</a>
+                                    {% include "components/experience_delete_modal.html" %}
+                                </div>
                             </div>
                         </article>
                     {% empty %}
