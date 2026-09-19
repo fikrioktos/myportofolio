@@ -736,6 +736,14 @@ h1, .brand {
 
 .project-delete-modal__actions form {
     margin: 0;
+    flex: 1;
+}
+
+.project-delete-modal__actions-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 1rem;
 }
 
 @media (max-width: 600px) {
@@ -751,6 +759,10 @@ h1, .brand {
     }
 
     .project-delete-modal__actions {
+        flex-direction: column-reverse;
+    }
+
+    .project-delete-modal__actions-buttons {
         flex-direction: column-reverse;
     }
 
