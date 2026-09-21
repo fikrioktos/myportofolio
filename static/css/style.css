@@ -404,31 +404,50 @@ h1, .brand {
     max-width: 640px;
 }
 
-/* Aksi per-item timeline: ubah (nanti juga hapus) */
+/* Aksi per-item timeline: ubah & hapus, dipush ke kanan */
 .timeline-actions {
     display: flex;
-    gap: 0.75rem;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
     margin-top: 0.75rem;
 }
 
 .timeline-action-link {
-    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
     font-weight: 700;
-    color: var(--text-muted);
+    color: var(--accent-dark);
     text-decoration: none;
-    border-bottom: 1px solid currentColor;
-    padding-bottom: 0.1rem;
+    border: 1px solid var(--accent-dark);
+    border-radius: var(--radius);
+    /* Samakan dengan .button (padding 0.65rem 1rem, font 1rem) supaya
+       kotaknya identik dengan tombol Hapus di sebelahnya. */
+    padding: 0.65rem 1rem;
+    transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .timeline-action-link:hover {
-    color: var(--accent-dark);
+    background-color: var(--accent-dark);
+    color: #fff;
 }
 
-/* Tombol hapus dalam timeline-actions: lebih kecil dari .button biasa */
+/* Tombol hapus dalam timeline-actions: outline merah, terisi saat hover.
+   Padding ngikutin .button (0.65rem 1rem, rule-nya menang karena urutan file),
+   jadi di sini cukup warna & line-height aja yang di-overridde. */
 .experience-delete-button {
-    font-size: 0.85rem;
-    padding: 0.25rem 0.6rem;
-    font-weight: 700;
+    line-height: 1;
+    background: transparent;
+    color: #b42318;
+    border: 1px solid #b42318;
+}
+
+.experience-delete-button:hover {
+    background: #8f1c13;
+    border-color: #8f1c13;
+    color: #fff;
 }
 
 @media (max-width: 600px) {

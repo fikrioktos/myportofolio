@@ -50,15 +50,20 @@ myportofolio/
 ├── portofolio/              # package konfigurasi Django (settings, urls, wsgi)
 ├── main/                    # aplikasi utama (MVT)
 │   ├── models.py            # model Experience & Project
-│   ├── views.py             # show_main, show_experience, show_projects
+│   ├── views.py             # show_main, show_projects, show_experience, create/update/delete, endpoint JSON & XML
 │   ├── urls.py              # named routes aplikasi main
+│   ├── forms.py             # ModelForm (Project, Experience) + mixin kode akses & rentang tanggal
 │   ├── admin.py             # registrasi model ke Django Admin
-│   ├── tests.py             # unit test (14 test, hijau)
+│   ├── tests.py             # unit test (64 test, hijau)
 │   └── migrations/          # migrasi skema + data migration seed
 ├── templates/
+│   ├── base.html            # kerangka utama (extend oleh semua halaman)
 │   ├── index.html           # halaman profile
 │   ├── experience.html      # halaman experience (data dari model)
-│   └── projects.html        # halaman projects (data dari model)
+│   ├── experience_form.html # form create & update experience
+│   ├── projects.html        # halaman projects (data dari model)
+│   ├── projects_form.html   # form create project
+│   └── components/          # modal konfirmasi hapus (project & experience)
 ├── static/
 │   ├── css/style.css        # styling seluruh halaman
 │   └── img/okto.png         # foto profil
@@ -132,8 +137,15 @@ git push pws master
 - Model `Project` dengan 9 field selain primary key: kategori (choices), deskripsi, technologies, periode, dan tiga tautan eksternal (repositori, laporan, demo).
 - View `show_projects`, template `projects.html` dengan `{% for %}` dan `{% empty %}`, named route `/projects/`, navbar konsisten di ketiga halaman.
 - Data migration seed, lalu migrasi lanjutan untuk tautan eksternal; satu entri proyek kompetisi dihapus lewat migrasi terpisah.
-- Test suite hijau: 14 test yang mencakup halaman profile, Experience, dan Projects (termasuk empty state dan tampilan tautan eksternal).
+- Test suite hijau: 64 test yang mencakup halaman profile, Experience, dan Projects (termasuk empty state dan tampilan tautan eksternal).
 - Kedua model didaftarkan ke Django Admin.
+
+### ✅ Tugas 3 — Form & Data Delivery (21 September 2026)
+
+- CRUD lengkap untuk Experience: create dan update lewat `ExperienceForm` (validasi kode akses dan rentang tanggal ditangani di level form lewat mixin), delete lewat modal konfirmasi bawaan HTML `popover` dengan proteksi kode akses.
+- Data delivery: `/api/experience/` (JSON) dan `/api/experience/xml/` (XML); halaman `/experience/` kini membaca data lewat round-trip `serializers.serialize` lalu `serializers.deserialize`, mengikuti pola yang sama dengan halaman Projects.
+- Struktur template dirapikan: satu `experience_form.html` dipakai bersama oleh halaman create dan update (mode dibedakan dari ada-tidaknya objek di context).
+- Test suite tumbuh dari 38 menjadi 64 test, semua hijau (26 test baru mencakup form, update, delete, endpoint data delivery, dan proteksi kode akses).
 
 ### Known Issues & Tech Debt
 
