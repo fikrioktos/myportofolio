@@ -5,6 +5,8 @@ from django.contrib.auth import login, logout
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.shortcuts import get_object_or_404, redirect, render
 import datetime
+from django.contrib.auth.decorators import login_required 
+from django.core.exceptions import PermissionDenied       
 
 from main.forms import ExperienceForm, ProjectForm, access_code_error
 from main.models import Experience, Project
@@ -46,7 +48,7 @@ def _experiences_list(request):
 
 
 def get_experience_json(request):
-    experiences_json = serializers.serialize("json", _experiences_list(request))
+    experiences_json = serializers.serialize("json", _experiences_list(request), use_natural_foreign_keys=True)
 
     return HttpResponse(experiences_json, content_type="application/json")
 
@@ -74,7 +76,7 @@ def _projects_matching_query(request):
 
 def get_projects_json(request):
     projects, _ = _projects_matching_query(request)
-    projects_json = serializers.serialize("json", projects)
+    projects_json = serializers.serialize("json", projects, use_natural_foreign_keys=True)
 
     return HttpResponse(projects_json, content_type="application/json")
 
@@ -103,7 +105,13 @@ def show_projects(request):
     }
     return render(request, "projects.html", context)
 
+
+@login_required(login_url="/login/")
 def create_project(request):
+
+    if not request.user.is_superuser:
+        raise PermissionDenied
+    
     if request.method == "POST":
         data = request.POST.copy()
 
@@ -135,8 +143,12 @@ def _supplied_access_code(request):
     )
 
 
+@login_required(login_url="/login/")
 def delete_project(request, project_id):
     project = get_object_or_404(Project, pk=project_id)
+
+    if not request.user.is_superuser:
+        raise PermissionDenied
 
     if request.method == "POST":
         error = access_code_error(_supplied_access_code(request))
@@ -152,7 +164,11 @@ def delete_project(request, project_id):
     return redirect("main:show_projects")
 
 
+@login_required(login_url="/login/")
 def create_experience(request):
+    if not request.user.is_superuser:
+        raise PermissionDenied
+    
     if request.method == "POST":
         data = request.POST.copy()
 
@@ -177,8 +193,12 @@ def create_experience(request):
     return render(request, "experience_form.html", context)
 
 
+@login_required(login_url="/login/")
 def update_experience(request, experience_id):
     experience = get_object_or_404(Experience, pk=experience_id)
+
+    if not request.user.is_superuser:
+        raise PermissionDenied
 
     if request.method == "POST":
         data = request.POST.copy()
@@ -205,8 +225,12 @@ def update_experience(request, experience_id):
     return render(request, "experience_form.html", context)
 
 
+@login_required(login_url="/login/")
 def delete_experience(request, experience_id):
     experience = get_object_or_404(Experience, pk=experience_id)
+
+    if not request.user.is_superuser:
+        raise PermissionDenied
 
     if request.method == "POST":
         error = access_code_error(_supplied_access_code(request))
@@ -259,4 +283,33 @@ def logout_user(request):
     response = redirect("main:show_main")
     response.delete_cookie('last_login')
     return response
+
+
+# Tanpa cek is_superuser: semua akun yang sudah login boleh memberi star
+@login_required(login_url="/login/")
+def toggle_star(request, project_id):
+    project = get_object_or_404(Project, pk=project_id)
+
+    if request.method == "POST":
+        # Kalau akun ini sudah pernah memberi star, batalkan star-nya.
+        # Kalau belum, tambahkan star.
+        if request.user in project.starred_by.all():
+            project.starred_by.remove(request.user)
+        else:
+            project.starred_by.add(request.user)
+
+    return redirect("main:show_projects")
+
+
+@login_required(login_url="/login/")
+def toggle_experience_star(request, experience_id):
+    experience = get_object_or_404(Experience, pk=experience_id)
+
+    if request.method == "POST":
+        if request.user in experience.starred_by.all():
+            experience.starred_by.remove(request.user)
+        else:
+            experience.starred_by.add(request.user)
+
+    return redirect("main:show_experience")
 

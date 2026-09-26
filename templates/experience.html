@@ -7,10 +7,12 @@
                 <p class="section-kicker">Perjalanan saya sejauh ini</p>
                 <div class="section-header">
                     <h1>Experience</h1>
-                    <a href="{% url 'main:create_experience' %}" class="button experience-add-button">
-                        <span aria-hidden="true">+</span>
-                        Tambah Experience
-                    </a>
+                    {% if user.is_superuser %}
+                        <a href="{% url 'main:create_experience' %}" class="button experience-add-button">
+                            <span aria-hidden="true">+</span>
+                            Tambah Experience
+                        </a>
+                    {% endif %}
                 </div>
 
                 <div class="timeline">
@@ -34,8 +36,11 @@
                                     <li>{{ experience.description }}</li>
                                 </ul>
                                 <div class="timeline-actions">
-                                    <a href="{% url 'main:update_experience' experience.id %}" class="timeline-action-link">Ubah</a>
-                                    {% include "components/experience_delete_modal.html" %}
+                                    {% include "components/star.html" with item=experience action="main:toggle_experience_star" %}
+                                    {% if user.is_superuser %}
+                                        <a href="{% url 'main:update_experience' experience.id %}" class="timeline-action-link">Ubah</a>
+                                        {% include "components/experience_delete_modal.html" %}
+                                    {% endif %}
                                 </div>
                             </div>
                         </article>

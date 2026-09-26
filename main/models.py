@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from django.contrib.auth.models import User
 
 
 class Experience(models.Model):
@@ -26,6 +27,9 @@ class Experience(models.Model):
     )
     started_at = models.DateField()
     ended_at = models.DateField(blank=True, null=True)
+    starred_by = models.ManyToManyField(
+        User, related_name="starred_experiences", blank=True
+    )
 
     def __str__(self):
         return self.title
@@ -61,6 +65,9 @@ class Project(models.Model):
     )
     started_at = models.DateField()
     ended_at = models.DateField(blank=True, null=True)
+    starred_by = models.ManyToManyField(
+        User, related_name="starred_projects", blank=True
+    )
 
     def __str__(self):
         return self.title
