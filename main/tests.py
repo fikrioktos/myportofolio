@@ -2,6 +2,7 @@ from datetime import date
 import json
 import uuid
 
+from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -20,6 +21,13 @@ class PortfolioTestCase(TestCase):
     """
 
     def setUp(self):
+        # View tulis dikunci @login_required + is_superuser, jadi client test
+        # harus login sebagai pemilik dulu.
+        self.owner = User.objects.create_superuser(
+            "pemilik", "pemilik@example.com", "pw-uji-123"
+        )
+        self.client.force_login(self.owner)
+
         Experience.objects.all().delete()
         Project.objects.all().delete()
 
