@@ -253,6 +253,18 @@ class ProjectDataDeliveryTest(PortfolioTestCase):
             started_at=date(2025, 3, 1),
         )
 
+
+    def test_api_does_not_leak_sensitive_fields(self):
+        """Endpoint publik tidak menyebarkan kolom sensitif milik user."""
+        for url in [
+            reverse("main:get_projects_json"),
+            reverse("main:get_experience_json"),
+        ]:
+            body = self.client.get(url).content.decode()
+            self.assertNotIn("password", body)
+            self.assertNotIn("last_login", body)
+            
+
     def test_projects_json_endpoint_returns_json(self):
         response = self.client.get(reverse("main:get_projects_json"))
 
