@@ -2,7 +2,7 @@ from datetime import date
 import json
 import uuid
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -813,3 +813,66 @@ class ExperienceAccessCodeNotConfiguredTest(PortfolioTestCase):
         self.assertTrue(
             Experience.objects.filter(pk=self.experience.id).exists()
         )
+
+
+@override_settings(PORTFOLIO_ACCESS_CODE=TEST_ACCESS_CODE)
+class EditorRoleTest(PortfolioTestCase):
+    """Matriks hak akses: pengunjung, user biasa, editor, pemilik."""
+
+    def setUp(self):
+        super().setUp()
+        # Base class login sebagai owner; kita butuh klien lain per peran.
+        from django.test import Client
+        self.guest = Client()
+        self.plain_user = User.objects.create_user("biasa", email="b@e.com")
+        self.plain_client = Client()
+        self.plain_client.force_login(self.plain_user)
+        self.editor = User.objects.create_user("edito", email="e@e.com")
+        Group.objects.get_or_create(name="Editor")[0].user_set.add(self.editor)
+        self.editor_client = Client()
+        self.editor_client.force_login(self.editor)
+
+    def _update_url(self):
+        return reverse("main:update_experience", args=[self.experience.pk])
+
+    def test_anonymous_redirected_to_login(self):
+        response = self.guest.get(self._update_url())
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response.url)
+
+    def test_plain_user_forbidden(self):
+        self.assertEqual(self.plain_client.get(self._update_url()).status_code, 403)
+
+    def test_editor_can_update(self):
+        response = self.editor_client.post(
+            self._update_url(),
+            {
+                "title": "Asisten Dosen PBP",
+                "role": "Teaching Assistant",
+                "organization": "Fasilkom UI",
+                "description": "Deskripsi baru dari editor.",
+                "category": "part-time",
+                "started_at": "2025-08-01",
+                "access_code": TEST_ACCESS_CODE,
+            },
+        )
+        self.assertRedirects(response, reverse("main:show_experience"))
+        self.experience.refresh_from_db()
+        self.assertEqual(self.experience.description, "Deskripsi baru dari editor.")
+
+    def test_editor_cannot_create_or_delete(self):
+        self.assertEqual(
+            self.editor_client.get(reverse("main:create_experience")).status_code, 403
+        )
+        self.assertEqual(
+            self.editor_client.post(
+                reverse("main:delete_experience", args=[self.experience.pk])
+            ).status_code,
+            403,
+        )
+        self.assertTrue(Experience.objects.filter(pk=self.experience.pk).exists())
+
+    def test_editor_sees_edit_button_only(self):
+        response = self.editor_client.get(reverse("main:show_experience"))
+        self.assertContains(response, "Ubah")
+        self.assertNotContains(response, "experience/add/")
