@@ -50,11 +50,11 @@ myportofolio/
 ├── portofolio/              # package konfigurasi Django (settings, urls, wsgi)
 ├── main/                    # aplikasi utama (MVT)
 │   ├── models.py            # model Experience & Project
-│   ├── views.py             # show_main, show_projects, show_experience, create/update/delete, endpoint JSON & XML
+│   ├── views.py             # show_main, show_projects, show_experience, create/update/delete, register/login/logout, toggle star, endpoint JSON & XML (+ helper is_editor/can_edit_entry)
 │   ├── urls.py              # named routes aplikasi main
 │   ├── forms.py             # ModelForm (Project, Experience) + mixin kode akses & rentang tanggal
 │   ├── admin.py             # registrasi model ke Django Admin
-│   ├── tests.py             # unit test (64 test, hijau)
+│   ├── tests.py             # unit test (70 test, hijau)
 │   └── migrations/          # migrasi skema + data migration seed
 ├── templates/
 │   ├── base.html            # kerangka utama (extend oleh semua halaman)
@@ -63,7 +63,9 @@ myportofolio/
 │   ├── experience_form.html # form create & update experience
 │   ├── projects.html        # halaman projects (data dari model)
 │   ├── projects_form.html   # form create project
-│   └── components/          # modal konfirmasi hapus (project & experience)
+│   ├── register.html        # halaman registrasi akun
+│   ├── login.html           # halaman login
+│   └── components/          # modal konfirmasi hapus (project & experience) + komponen star bersama
 ├── static/
 │   ├── css/style.css        # styling seluruh halaman
 │   └── img/okto.png         # foto profil
@@ -147,11 +149,30 @@ git push pws master
 - Struktur template dirapikan: satu `experience_form.html` dipakai bersama oleh halaman create dan update (mode dibedakan dari ada-tidaknya objek di context).
 - Test suite tumbuh dari 38 menjadi 64 test, semua hijau (26 test baru mencakup form, update, delete, endpoint data delivery, dan proteksi kode akses).
 
+### ✅ Tutorial 04 — Autentikasi, Sesi, dan Cookie (28 September 2026)
+
+- Registrasi, login, dan logout memakai sistem autentikasi bawaan Django (`UserCreationForm`, `AuthenticationForm`, `login`/`logout`) di atas model `User` standar: tanpa model baru, tanpa `makemigrations`.
+- Status login tampil di navbar `base.html` (username + Logout untuk yang sudah login, Login/Register untuk yang belum), sehingga satu perubahan berlaku di semua halaman.
+- Cookie `last_login` ditulis lewat `response.set_cookie` di `login_user`, dibaca di `show_main` dan ditampilkan sebagai metadata di halaman profile, lalu dihapus lewat `response.delete_cookie` saat logout.
+- Otorisasi jalur tulis: `@login_required(login_url="/login/")` + `raise PermissionDenied` untuk non-superuser di semua view tulis kedua section (create/update/delete Experience dan Projects); tombol aksi disembunyikan di template lewat `{% if user.is_superuser %}`.
+- Fitur star: `ManyToManyField` `starred_by` ke model `User` di `Project` (`related_name="starred_projects"`) dan `Experience` (`related_name="starred_experiences"`) lewat migrasi `0009`; view `toggle_star`/`toggle_experience_star` POST-only dengan `{% csrf_token %}`, maksimal satu star per pengguna, menampilkan jumlah star dan status bintang milik pengunjung.
+- Komponen star dibuat satu file bersama `templates/components/star.html` yang dipakai halaman Projects dan Experience lewat `{% include ... with item=... action=... %}`; nama route dilewatkan sebagai variabel ke tag `{% url %}`, jadi tidak ada duplikasi markup star per model.
+- `serializers.serialize` di keempat endpoint JSON/XML kini memakai `use_natural_foreign_keys=True`, sehingga field `starred_by` tidak lagi membocorkan primary key user mentah di payload publik.
+
+### ✅ Tugas 4 — Peran Editor & Matriks Hak Akses (28 September 2026)
+
+- Peran Editor diwujudkan lewat Django Group bernama `Editor` (dibuat via Django Admin), diperiksa di server dengan `request.user.groups.filter(name="Editor").exists()` melalui helper `is_editor()` dan `can_edit_entry()` di `main/views.py`, mengikuti pola pertama yang disarankan spek.
+- Matriks hak akses empat peran sesuai spek: pengunjung tanpa login di-redirect ke `/login/` untuk aksi tulis; pengguna biasa hanya bisa membaca dan memberi star; Editor boleh mengubah data (`update_experience` mengecek `can_edit_entry`) tetapi create/delete tetap 403; pemilik (superuser) memegang seluruh hak.
+- Kontrol di template ikut peran: tombol Ubah muncul untuk `{% if can_edit %}` (boolean dari view), tombol Tambah/Hapus tetap khusus superuser.
+- Test matriks hak akses (`EditorRoleTest`, 5 test): anonim di-redirect, user biasa kena 403, editor berhasil update dan perubahannya benar-benar tersimpan ke database, editor ditolak untuk create dan delete, serta editor hanya melihat tombol Ubah di halaman.
+- Test suite tumbuh dari 64 menjadi 70 test, semua hijau.
+
 ### Known Issues & Tech Debt
 
 - `SECRET_KEY` masih di-hardcode di `settings.py` (default `django-admin startproject`). Idealnya pindah ke `os.getenv('SECRET_KEY')` agar tidak terekspos di repository public. **Mitigasi sementara:** repository ini masih development, belum ada user/session yang perlu diamankan.
 - `DEBUG = True` di-hardcode. Untuk production yang aman, harus dibungkus dengan logika `if PRODUCTION: DEBUG = False`.
 - Responsive breakpoint hanya 600px. Tablet (600-900px) belum dites secara eksplisit — perlu ditambahkan media query intermediate di iterasi berikutnya.
+- Jalur tulis di production terkunci untuk semua pengunjung: `createsuperuser` dan pembuatan Group `Editor` hanya bisa dilakukan lokal karena PWS tidak menyediakan shell, jadi akun owner/editor belum ada di database production. Rencana perbaikan: seed owner dan grup Editor lewat data migration yang membaca kredensial dari variabel environment PWS Environs.
 
 ### Tugas-tugas berikutnya akan ditambahkan di sini seiring semester berlangsung.
 
@@ -177,6 +198,8 @@ Saya menggunakan AI sebagai **pair-programming partner**: AI memberikan draft ko
 - Perbaikan test suite yang merah: diagnosis `IntegrityError` di `setUp()`, membuat test hermetic terhadap data seed, dan penulisan test halaman Projects sesuai tiga kasus yang diminta spek
 - Rencana migrasi: urutan `makemigrations`, data migration seed, dan migrasi lanjutan untuk perubahan data setelah seed diterapkan
 - Verifikasi otomatis: menjalankan `manage.py test` dan membaca ulang file repo sebelum memberi saran
+- Auditing checklist Tugas 4 terhadap rubrik: verifikasi bahwa pembatasan peran hanya sebatas data (Group `Editor` sudah dibuat di Django Admin tapi belum dibaca kode), lalu cek ulang hasil implementasi peran Editor (helper `is_editor`/`can_edit_entry`, gate di view, `{% if can_edit %}` di template, `EditorRoleTest`) setelah commit masuk
+- Penyusunan section README Tugas 4: setiap klaim angka (70 test, jumlah test per kelas, nama related_name, nomor migrasi) diverifikasi dulu lewat `manage.py test`, `grep`, dan introspeksi `db.sqlite3`, bukan ditulis dari ingatan sesi
 
 ### Bagian yang saya kerjakan sendiri
 - Identitas di website (nama, NPM, bio, social links)
@@ -205,6 +228,10 @@ Selama pengerjaan Tugas 2, ada tiga keterbatasan tambahan yang saya temukan:
 4. **Rencana yang mengabaikan kendala lingkungan produksi.** Salah satu usulan awal mengisi data production adalah lewat `manage.py shell` lalu menambahkan data migration "sebelum push". Usulan itu tidak memperhitungkan bahwa PWS tidak menyediakan shell, sehingga datanya harus dimasukkan dua kali lewat dua mekanisme berbeda. Saya menolak usulan tersebut dan memilih jalur data migration sejak awal: satu kali `migrate` mengisi database lokal dan production sekaligus.
 
 5. **Konteks yang basi pada sesi panjang.** Sesi pengerjaan Tugas 2 berjalan panjang sehingga konteks AI terpotong, dan AI sesekali merujuk keadaan repository yang sudah tidak berlaku. Saya mengatasinya dengan meminta AI membaca ulang file (`git status`, `git log`, `requirements.txt`) sebelum memberi saran, alih-alih percaya pada ringkasannya. Di sisi lain, kelemahan ini juga jadi kelebihan: AI yang menjalankan verifikasi read-only (test suite, render halaman lewat test client) menemukan hal yang saya lewatkan, misalnya test yang masih menge-assert teks dari desain lama.
+
+Selama pengerjaan Tugas 4, keterbatasan nomor 5 terulang dengan bentuk yang lebih menipu:
+
+6. **Snapshot riwayat yang tertinggal beberapa jam.** AI membaca `git log` sebelum saya menyelesaikan merge `feat/editor-role`, lalu menyimpulkan bahwa peran Editor belum diimplementasikan karena grep pada kode saat itu memang belum menemukannya. Kesimpulan itu salah untuk kondisi terbaru: grup Editor sudah dibuat dan helper `is_editor`/`can_edit_entry` sudah di-merge, hanya saja AI menyimpulkan dari keadaan yang basi. Saya mengoreksinya dengan meminta AI menjalankan ulang `git log` dan `grep` pada saat itu juga, dan hasil verifikasinya (5 test `EditorRoleTest` hijau, 70 test total) yang akhirnya masuk README. Pelajarannya: status pekerjaan tidak boleh disimpulkan dari hasil pembacaan sebelumnya, bahkan hasil pembacaan lima menit yang lalu; setiap klaim "belum ada" harus diverifikasi ulang sesaat sebelum ditulis.
 
 ---
 
