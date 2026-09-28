@@ -183,8 +183,9 @@ git push pws master
 Project ini dikembangkan dengan bantuan AI assistant (Hermes, model MiniMax-M3). AI digunakan secara terbatas untuk **panduan workflow, code review, dan snippet CSS/HTML**, sementara eksekusi edit, commit, dan push dilakukan sendiri oleh saya.
 
 ### Tools yang digunakan
-- **Hermes** (desktop chat assistant) untuk diskusi teknis, tanya-jawab soal Git, Django, dan CSS. Sesi Tugas 1 berjalan di atas model MiniMax-M3; sesi Tugas 2 berjalan di atas GLM (glm-5.3-flash).
+- **Hermes** (desktop chat assistant) untuk diskusi teknis, tanya-jawab soal Git, Django, dan CSS. Sesi Tugas 1 berjalan di atas model MiniMax-M3; sesi Tugas 2 berjalan di atas GLM (glm-5.3-flash); sesi Tutorial 04 dan Tugas 4 berjalan di atas qwen3.8-flash:free.
 - Log percakapan sesi Tugas 2 dilampirkan terpisah di `docs/ai-log.md`.
+- Log prompting sesi Tutorial 04 dan Tugas 4 (25-28 September 2026, 34 prompt) dilampirkan terpisah di `docs/ai-log-tugas-4.md`.
 
 ### Strategi prompting
 Saya menggunakan AI sebagai **pair-programming partner**: AI memberikan draft kode/strategi, lalu saya review, modifikasi, dan eksekusi sendiri. Pendekatan ini dipilih agar saya tetap memahami setiap perubahan yang masuk ke repository, bukan hanya copy-paste tanpa paham.
