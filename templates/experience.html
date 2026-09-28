@@ -37,8 +37,10 @@
                                 </ul>
                                 <div class="timeline-actions">
                                     {% include "components/star.html" with item=experience action="main:toggle_experience_star" %}
-                                    {% if user.is_superuser %}
+                                    {% if can_edit %}
                                         <a href="{% url 'main:update_experience' experience.id %}" class="timeline-action-link">Ubah</a>
+                                    {% endif %}
+                                    {% if user.is_superuser %}
                                         {% include "components/experience_delete_modal.html" %}
                                     {% endif %}
                                 </div>

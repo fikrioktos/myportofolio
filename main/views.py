@@ -12,6 +12,16 @@ from main.forms import ExperienceForm, ProjectForm, access_code_error
 from main.models import Experience, Project
 
 
+def is_editor(user):
+    """Anggota Django Group 'Editor' — grubnya dibuat lewat /admin."""
+    return user.groups.filter(name="Editor").exists()
+
+
+def can_edit_entry(user):
+    """Boleh mengubah entri: pemilik (superuser) atau editor."""
+    return user.is_superuser or is_editor(user)
+
+
 def show_main(request):
     last_login = request.COOKIES.get('last_login', 'Belum ada sesi login / Cookie tidak ditemukan')
     context = {
@@ -38,6 +48,7 @@ def show_experience(request):
     context = {
         "name": "Fikri Okto Setiadi",
         "experience_list": experiences,
+        "can_edit": can_edit_entry(request.user),
     }
     return render(request, "experience.html", context)
 
@@ -197,7 +208,7 @@ def create_experience(request):
 def update_experience(request, experience_id):
     experience = get_object_or_404(Experience, pk=experience_id)
 
-    if not request.user.is_superuser:
+    if not can_edit_entry(request.user):
         raise PermissionDenied
 
     if request.method == "POST":
