@@ -65,7 +65,7 @@ def get_experience_json(request):
 
 
 def get_experience_xml(request):
-    experiences_xml = serializers.serialize("xml", _experiences_list(request))
+    experiences_xml = serializers.serialize("xml", _experiences_list(request), use_natural_foreign_keys=True)
 
     return HttpResponse(experiences_xml, content_type="application/xml")
 
@@ -94,7 +94,7 @@ def get_projects_json(request):
 
 def get_projects_xml(request):
     projects, _ = _projects_matching_query(request)
-    projects_xml = serializers.serialize("xml", projects)
+    projects_xml = serializers.serialize("xml", projects, use_natural_foreign_keys=True)
 
     return HttpResponse(projects_xml, content_type="application/xml")
 
