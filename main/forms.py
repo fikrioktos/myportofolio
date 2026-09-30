@@ -1,5 +1,7 @@
 from django import forms
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.utils.html import strip_tags
 
 from main.models import Experience, Project
 
@@ -122,6 +124,19 @@ class ProjectForm(AccessCodeFormMixin, DateRangeFormMixin, forms.ModelForm):
             "started_at": forms.DateInput(attrs={"type": "date"}),
             "ended_at": forms.DateInput(attrs={"type": "date"}),
         }
+
+    def clean_title(self):
+        title = strip_tags(self.cleaned_data["title"]).strip()
+        if not title:
+            raise ValidationError("Nama proyek tidak boleh hanya berisi tag HTML.")
+        return title
+
+    def clean_technologies(self):
+        return strip_tags(self.cleaned_data["technologies"]).strip()
+
+    def clean_description(self):
+        return strip_tags(self.cleaned_data["description"]).strip()
+
 
 
 class ExperienceForm(AccessCodeFormMixin, DateRangeFormMixin, forms.ModelForm):

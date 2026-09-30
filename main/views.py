@@ -5,8 +5,10 @@ from django.contrib.auth import login, logout
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.shortcuts import get_object_or_404, redirect, render
 import datetime
-from django.contrib.auth.decorators import login_required 
-from django.core.exceptions import PermissionDenied       
+from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
 
 from main.forms import ExperienceForm, ProjectForm, access_code_error
 from main.models import Experience, Project
@@ -87,9 +89,34 @@ def _projects_matching_query(request):
 
 def get_projects_json(request):
     projects, _ = _projects_matching_query(request)
-    projects_json = serializers.serialize("json", projects, use_natural_foreign_keys=True)
+    projects = projects.prefetch_related("starred_by")
 
-    return HttpResponse(projects_json, content_type="application/json")
+    data = []
+    for project in projects:
+        starred_users = project.starred_by.all()
+        is_starred = request.user in starred_users if request.user.is_authenticated else False
+        starred_by_names = ", ".join([u.username for u in starred_users])
+
+        data.append({
+            "pk": str(project.id),
+            "fields": {
+                "title": project.title,
+                "description": project.description,
+                "category": project.get_category_display(),
+                "technologies": project.technologies,
+                "repository_url": project.repository_url,
+                "report_url": project.report_url,
+                "deployment_url": project.deployment_url,
+                "started_at": str(project.started_at),
+                "ended_at": str(project.ended_at) if project.ended_at else None,
+                "is_ongoing": project.is_ongoing,
+                "star_count": starred_users.count(),
+                "is_starred": is_starred,
+                "starred_by_names": starred_by_names,
+            }
+        })
+
+    return JsonResponse(data, safe=False)
 
 
 def get_projects_xml(request):
@@ -100,19 +127,12 @@ def get_projects_xml(request):
 
 
 def show_projects(request):
-    json_response = get_projects_json(request)
-    projects = serializers.deserialize(
-        "json",
-        json_response.content.decode("utf-8"),
-    )
-    projects = [project.object for project in projects]
-
-    _, title_query = _projects_matching_query(request)
+    title_query = request.GET.get("title", "").strip()
 
     context = {
         "name": "Fikri Okto Setiadi",
-        "project_list": projects,
         "title_query": title_query,
+        "form": ProjectForm(),
     }
     return render(request, "projects.html", context)
 
@@ -323,4 +343,23 @@ def toggle_experience_star(request, experience_id):
             experience.starred_by.add(request.user)
 
     return redirect("main:show_experience")
+
+
+@require_POST
+def create_project_ajax(request):
+    if not request.user.is_superuser:
+        return JsonResponse(
+            {"message": "Hanya pemilik portofolio yang dapat menambahkan proyek."},
+            status=403,
+        )
+
+    form = ProjectForm(request.POST)
+    if form.is_valid():
+        project = form.save()
+        return JsonResponse(
+            {"message": "Proyek berhasil ditambahkan.", "pk": str(project.id)},
+            status=201,
+        )
+
+    return JsonResponse({"errors": form.errors.get_json_data()}, status=400)
 

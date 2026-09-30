@@ -128,37 +128,40 @@ class ProjectTest(PortfolioTestCase):
         self.assertContains(response, f'href="{reverse("main:show_main")}"')
         self.assertContains(response, f'href="{reverse("main:show_experience")}"')
 
-    def test_projects_page_shows_data(self):
+    def test_projects_page_contains_ajax_containers(self):
         response = self.client.get(reverse("main:show_projects"))
 
-        self.assertContains(response, self.project.title)
-        self.assertContains(response, self.project.get_category_display())
-        self.assertContains(response, self.project.description)
-        self.assertContains(response, self.project.technologies)
-        self.assertContains(response, self.project.repository_url)
-        self.assertContains(response, "Present")
-        self.assertNotContains(response, self.experience.title)
+        self.assertContains(response, 'id="project-search-form"')
+        self.assertContains(response, 'id="grid"')
+        self.assertContains(response, 'id="empty"')
+        self.assertNotContains(response, self.project.description)
 
-    def test_empty_projects_page(self):
+    def test_empty_projects_json_returns_empty_list(self):
         Project.objects.all().delete()
-        response = self.client.get(reverse("main:show_projects"))
+        response = self.client.get(reverse("main:get_projects_json"))
 
-        self.assertContains(response, "Belum ada proyek yang ditambahkan.")
+        self.assertEqual(json.loads(response.content.decode("utf-8")), [])
 
-    def test_projects_page_shows_external_links(self):
+    def test_projects_json_includes_external_links(self):
         self.project.report_url = "https://drive.google.com/file/d/contoh/view"
         self.project.deployment_url = "https://contoh.itch.io/game"
         self.project.save()
+        response = self.client.get(reverse("main:get_projects_json"))
+
+        payload = json.loads(response.content.decode("utf-8"))
+        project_data = next(
+            item["fields"] for item in payload if item["pk"] == str(self.project.id)
+        )
+        self.assertEqual(project_data["repository_url"], self.project.repository_url)
+        self.assertEqual(project_data["report_url"], self.project.report_url)
+        self.assertEqual(project_data["deployment_url"], self.project.deployment_url)
+
+    def test_projects_page_uses_ajax_card_builder(self):
         response = self.client.get(reverse("main:show_projects"))
 
-        self.assertContains(response, self.project.report_url)
-        self.assertContains(response, self.project.deployment_url)
-
-    def test_projects_without_external_links(self):
-        response = self.client.get(reverse("main:show_projects"))
-
-        self.assertNotContains(response, "Lihat laporan")
-        self.assertNotContains(response, "Coba demo")
+        self.assertContains(response, "const links = [")
+        self.assertContains(response, "Lihat laporan")
+        self.assertContains(response, "Coba demo")
 
 
 @override_settings(PORTFOLIO_ACCESS_CODE=TEST_ACCESS_CODE)
@@ -198,7 +201,7 @@ class ProjectFormTest(PortfolioTestCase):
         self.assertRedirects(response, reverse("main:show_projects"))
         self.assertTrue(Project.objects.filter(title="Aplikasi Catatan Kuliah").exists())
 
-    def test_new_project_appears_on_projects_page(self):
+    def test_new_project_appears_in_projects_json(self):
         response = self.client.post(
             reverse("main:create_project"),
             {
@@ -208,13 +211,14 @@ class ProjectFormTest(PortfolioTestCase):
                 "started_at": "2026-09-01",
                 "access_code": TEST_ACCESS_CODE,
             },
-            follow=True,
         )
 
-        self.assertContains(response, "Aplikasi Catatan Kuliah")
-        self.assertTrue(
-            Project.objects.filter(title="Aplikasi Catatan Kuliah").exists()
+        self.assertRedirects(response, reverse("main:show_projects"))
+        payload = json.loads(
+            self.client.get(reverse("main:get_projects_json")).content.decode("utf-8")
         )
+        titles = [item["fields"]["title"] for item in payload]
+        self.assertIn("Aplikasi Catatan Kuliah", titles)
 
     def test_invalid_project_form_does_not_save(self):
         response = self.client.post(
@@ -240,6 +244,83 @@ class ProjectFormTest(PortfolioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "tidak boleh lebih awal")
         self.assertFalse(Project.objects.filter(title="Proyek Salah Tanggal").exists())
+
+
+@override_settings(PORTFOLIO_ACCESS_CODE=TEST_ACCESS_CODE)
+class ProjectAjaxCreateTest(PortfolioTestCase):
+    """Endpoint tambah proyek AJAX dan pembersihan inputnya."""
+
+    def ajax_payload(self, **overrides):
+        payload = {
+            "title": "Proyek AJAX",
+            "category": "personal",
+            "description": "Dibuat tanpa reload halaman.",
+            "technologies": "Django, JavaScript",
+            "started_at": "2026-09-01",
+            "access_code": TEST_ACCESS_CODE,
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_ajax_create_only_accepts_post(self):
+        response = self.client.get(reverse("main:create_project_ajax"))
+
+        self.assertEqual(response.status_code, 405)
+
+    def test_ajax_create_rejects_anonymous_user_with_json(self):
+        self.client.logout()
+        response = self.client.post(
+            reverse("main:create_project_ajax"), self.ajax_payload()
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(response["Content-Type"].startswith("application/json"))
+        self.assertEqual(
+            json.loads(response.content.decode("utf-8"))["message"],
+            "Hanya pemilik portofolio yang dapat menambahkan proyek.",
+        )
+        self.assertFalse(Project.objects.filter(title="Proyek AJAX").exists())
+
+    def test_ajax_create_saves_valid_project_and_returns_json(self):
+        response = self.client.post(
+            reverse("main:create_project_ajax"), self.ajax_payload()
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response["Content-Type"].startswith("application/json"))
+        body = json.loads(response.content.decode("utf-8"))
+        project = Project.objects.get(title="Proyek AJAX")
+        self.assertEqual(body["pk"], str(project.id))
+        self.assertEqual(body["message"], "Proyek berhasil ditambahkan.")
+
+    def test_ajax_create_rejects_html_only_title(self):
+        response = self.client.post(
+            reverse("main:create_project_ajax"),
+            self.ajax_payload(title="<img src=x onerror=alert(1)>"),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        errors = json.loads(response.content.decode("utf-8"))["errors"]
+        self.assertEqual(
+            errors["title"][0]["message"],
+            "Nama proyek tidak boleh hanya berisi tag HTML.",
+        )
+        self.assertFalse(Project.objects.filter(title__contains="img src").exists())
+
+    def test_ajax_create_strips_html_from_text_fields(self):
+        response = self.client.post(
+            reverse("main:create_project_ajax"),
+            self.ajax_payload(
+                title="Proyek <b>AJAX</b>",
+                description="Halo <b>dunia</b>",
+                technologies="JavaScript <i>aman</i>",
+            ),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        project = Project.objects.get(title="Proyek AJAX")
+        self.assertEqual(project.description, "Halo dunia")
+        self.assertEqual(project.technologies, "JavaScript aman")
 
 
 class ProjectDataDeliveryTest(PortfolioTestCase):
@@ -303,38 +384,36 @@ class ProjectDataDeliveryTest(PortfolioTestCase):
 
         self.assertContains(response, 'name="title"')
 
-    def test_projects_page_filters_by_title(self):
+    def test_projects_page_keeps_search_query_for_ajax(self):
         response = self.client.get(
             reverse("main:show_projects"), {"title": "visual"}
         )
 
-        self.assertContains(response, self.other_project.title)
-        self.assertNotContains(response, self.project.title)
+        self.assertContains(response, 'value="visual"')
+        self.assertContains(response, 'id="grid"')
+        self.assertNotContains(response, self.other_project.title)
 
-    def test_projects_page_shows_message_when_filter_finds_nothing(self):
+    def test_projects_json_returns_empty_list_for_missing_title(self):
         response = self.client.get(
-            reverse("main:show_projects"), {"title": "tidak ada"}
+            reverse("main:get_projects_json"), {"title": "tidak ada"}
         )
 
-        self.assertContains(response, "Tidak ada proyek dengan nama tersebut.")
-        self.assertNotContains(response, self.project.title)
-        self.assertNotContains(response, self.other_project.title)
+        self.assertEqual(json.loads(response.content.decode("utf-8")), [])
 
 
 @override_settings(PORTFOLIO_ACCESS_CODE=TEST_ACCESS_CODE)
 class ProjectDeleteTest(PortfolioTestCase):
-    def test_projects_page_shows_delete_modal(self):
+    def test_projects_page_includes_ajax_delete_template(self):
         response = self.client.get(reverse("main:show_projects"))
 
-        self.assertContains(response, f'id="delete-project-{self.project.id}"')
         self.assertContains(
-            response, f'popovertarget="delete-project-{self.project.id}"'
+            response,
+            'const deleteUrl = "{}"'.format(
+                reverse("main:delete_project", args=[uuid.UUID("00000000-0000-0000-0000-000000000000")])
+            ),
         )
-        self.assertContains(response, "Hapus Proyek?")
         self.assertContains(response, 'name="access_code"')
-        self.assertContains(
-            response, reverse("main:delete_project", args=[self.project.id])
-        )
+        self.assertContains(response, "Yakin ingin menghapus project ini?")
 
     def test_delete_project_removes_data_and_redirects(self):
         response = self.client.post(
