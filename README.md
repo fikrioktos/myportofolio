@@ -167,6 +167,18 @@ git push pws master
 - Test matriks hak akses (`EditorRoleTest`, 5 test): anonim di-redirect, user biasa kena 403, editor berhasil update dan perubahannya benar-benar tersimpan ke database, editor ditolak untuk create dan delete, serta editor hanya melihat tombol Ubah di halaman.
 - Test suite tumbuh dari 64 menjadi 70 test, semua hijau.
 
+### ✅ Tugas 5 — Interaktivitas Experience dengan AJAX
+
+- Halaman `/experience/` diubah menjadi kerangka halaman yang mengambil daftar data dari endpoint JSON `/api/experience/` menggunakan `fetch()`, sehingga kartu experience dirender oleh JavaScript tanpa data ditulis langsung di template.
+- Endpoint JSON Experience kini dibangun manual dengan `JsonResponse`. Setiap respons memuat data utama experience, periode, kategori yang sudah dikonversi ke label tampilan, serta informasi star berupa jumlah star, status star pengguna yang sedang login, dan daftar username pemberi star.
+- Pencarian berdasarkan judul experience berjalan tanpa reload halaman. Event `input` memakai debouncing 300 ms melalui kombinasi `clearTimeout()` dan `setTimeout()`, sehingga request baru dikirim setelah pengguna berhenti mengetik.
+- Halaman menyediakan empat state saat mengambil data: loading, daftar data berhasil dimuat, hasil pencarian kosong, dan error ketika request ke server gagal. Request lama juga dibatalkan dengan `AbortController` agar hasil pencarian yang lebih lama tidak menimpa hasil terbaru.
+- Tambah Experience dipindahkan dari halaman terpisah ke modal berbasis HTML `popover`. Form dikirim memakai `fetch()` dan `FormData`, membawa token CSRF melalui header `X-CSRFToken`, lalu memperbarui daftar data tanpa me-reload halaman jika server membalas status `201 Created`.
+- Endpoint tambah Experience AJAX memeriksa hak akses di server. Hanya superuser yang dapat menambah data, sedangkan pengunjung atau pengguna biasa menerima respons JSON `403 Forbidden`. Input tidak valid dibalas sebagai JSON `400 Bad Request` agar pesan error dapat ditampilkan lewat toast.
+- Fitur star Experience juga berjalan tanpa reload halaman. Event delegation pada container daftar memastikan tombol star pada kartu yang baru dirender tetap dapat digunakan, lalu UI diperbarui dari respons JSON terbaru.
+- Perlindungan XSS diterapkan dalam dua lapisan: `strip_tags` pada `ExperienceForm` membersihkan input teks di server, sedangkan fungsi `escapeHtml()` mengamankan semua nilai dari JSON sebelum disisipkan ke `innerHTML`, termasuk nilai teks dan atribut URL.
+- Logika JavaScript halaman dipisahkan ke `static/js/experience.js`, sementara template hanya menyediakan struktur HTML dan konfigurasi URL Django melalui `window.experienceConfig`.
+
 ### Known Issues & Tech Debt
 
 - `SECRET_KEY` masih di-hardcode di `settings.py` (default `django-admin startproject`). Idealnya pindah ke `os.getenv('SECRET_KEY')` agar tidak terekspos di repository public. **Mitigasi sementara:** repository ini masih development, belum ada user/session yang perlu diamankan.
@@ -186,6 +198,7 @@ Project ini dikembangkan dengan bantuan AI assistant (Hermes, model MiniMax-M3).
 - **Hermes** (desktop chat assistant) untuk diskusi teknis, tanya-jawab soal Git, Django, dan CSS. Sesi Tugas 1 berjalan di atas model MiniMax-M3; sesi Tugas 2 berjalan di atas GLM (glm-5.3-flash); sesi Tutorial 04 dan Tugas 4 berjalan di atas qwen3.8-flash:free.
 - Log percakapan sesi Tugas 2 dilampirkan terpisah di `docs/ai-log.md`.
 - Log prompting sesi Tutorial 04 dan Tugas 4 (25-28 September 2026, 34 prompt) dilampirkan terpisah di `docs/ai-log-tugas-4.md`.
+- Log prompting sesi Tugas 5 (3-4 Oktober 2026, 23 prompt unik) dilampirkan terpisah di `docs/ai-log-tugas-5.md`.
 
 ### Strategi prompting
 Saya menggunakan AI sebagai **pair-programming partner**: AI memberikan draft kode/strategi, lalu saya review, modifikasi, dan eksekusi sendiri. Pendekatan ini dipilih agar saya tetap memahami setiap perubahan yang masuk ke repository, bukan hanya copy-paste tanpa paham.
@@ -201,6 +214,10 @@ Saya menggunakan AI sebagai **pair-programming partner**: AI memberikan draft ko
 - Verifikasi otomatis: menjalankan `manage.py test` dan membaca ulang file repo sebelum memberi saran
 - Auditing checklist Tugas 4 terhadap rubrik: verifikasi bahwa pembatasan peran hanya sebatas data (Group `Editor` sudah dibuat di Django Admin tapi belum dibaca kode), lalu cek ulang hasil implementasi peran Editor (helper `is_editor`/`can_edit_entry`, gate di view, `{% if can_edit %}` di template, `EditorRoleTest`) setelah commit masuk
 - Penyusunan section README Tugas 4: setiap klaim angka (70 test, jumlah test per kelas, nama related_name, nomor migrasi) diverifikasi dulu lewat `manage.py test`, `grep`, dan introspeksi `db.sqlite3`, bukan ditulis dari ingatan sesi
+- Review implementasi Tugas 5: pemetaan pola AJAX dari halaman Projects ke Experience, pengecekan kesesuaian field model dengan payload JSON, serta audit hak akses agar endpoint AJAX tidak hanya bergantung pada tombol yang disembunyikan di template.
+- Penjelasan dan review alur JavaScript: debouncing pencarian, penggunaan `async`/`await`, pembatalan request lama dengan `AbortController`, pengiriman CSRF lewat `fetch()`, serta pembaruan daftar dan star tanpa reload halaman.
+- Review perlindungan XSS dua lapis: sanitasi input teks dengan `strip_tags` di `ExperienceForm` dan escaping setiap nilai JSON sebelum dimasukkan ke `innerHTML`.
+- Penyusunan dokumentasi Tugas 5 dan jawaban pertanyaan reflektif berdasarkan implementasi yang benar-benar ada di repository.
 
 ### Bagian yang saya kerjakan sendiri
 - Identitas di website (nama, NPM, bio, social links)
@@ -211,6 +228,9 @@ Saya menggunakan AI sebagai **pair-programming partner**: AI memberikan draft ko
 - Pengujian lokal (`python manage.py runserver`) dan verifikasi visual
 - Keputusan konten (misalnya menghapus entri proyek kompetisi dari data awal) dan verifikasi setiap URL eksternal sebelum dimasukkan ke data
 - Eksekusi seluruh perintah `makemigrations`, `migrate`, `runserver`, dan `git`
+- Implementasi dan penyesuaian akhir fitur AJAX pada Experience, termasuk keputusan struktur kartu, isi pesan toast, serta pengalaman pengguna pada state loading, kosong, dan error.
+- Review manual terhadap perilaku fitur untuk tiap peran, terutama perbedaan hak pengunjung, pengguna biasa, Editor, dan superuser pada aksi tambah, ubah, hapus, dan star.
+- Pengujian manual keamanan XSS dengan input HTML, lalu memastikan data berbahaya tidak dijalankan sebagai kode di browser.
 
 ### Analisis Kritis Keterbatasan AI
 
@@ -311,3 +331,29 @@ Selama pengerjaan Tugas 4, keterbatasan nomor 5 terulang dengan bentuk yang lebi
    Serialization diperlukan karena objek `Experience` atau `Project` adalah objek Python yang hanya hidup di memori server. Format pertukaran data harus berupa teks, dan model Django tidak bisa diserialisasi secara otomatis: HTTP tidak tahu apa-apa soal objek Python, dan template pun tidak terlibat karena JSON bukan halaman. `serializers.serialize` menjembatani jurang ini dengan mengubah objek menjadi representasi teks standar, dan kebalikannya `serializers.deserialize` mengubah teks JSON kembali menjadi objek model.
 
    Yang menarik dari Tutorial 03, alur kebalikannya juga saya pakai di proyek. View `show_experience` tidak lagi memanggil `Experience.objects.all()` langsung, melainkan memanggil `get_experience_json`, mengambil isi response-nya, lalu memasukkannya ke `serializers.deserialize("json", ...)` dan mengambil tiap `.object` dari hasilnya sebagai context template. Langkah ini memang redundan dibanding query langsung, tapi justru itu tujuan tutorialnya: memastikan satu jalur data yang sama dipakai baik oleh halaman HTML maupun endpoint JSON, sehingga data yang tampil di halaman dijamin identik dengan data yang dikirim lewat API.
+
+### Tugas 5
+
+1. **Jelaskan apa itu debouncing dan mengapa teknik ini penting diterapkan pada fitur pencarian yang menggunakan AJAX!**
+
+   Debouncing adalah teknik untuk menunda pemanggilan suatu fungsi sampai pengguna berhenti melakukan aksi selama waktu tertentu. Pada fitur pencarian Experience, event `input` tidak langsung mengirim request setiap kali satu karakter diketik. Saya menyimpan timer melalui `setTimeout()`, lalu selalu membatalkan timer sebelumnya dengan `clearTimeout()` apabila pengguna masih mengetik. Setelah tidak ada input baru selama 300 milidetik, barulah fungsi pencarian memanggil endpoint JSON dengan `fetch()`.
+
+   Teknik ini penting karena tanpa debouncing, setiap karakter dapat menghasilkan satu request AJAX. Jika pengguna mengetik kata `Teaching Assistant`, browser berpotensi mengirim banyak request secara berurutan hanya untuk satu pencarian. Hal tersebut membebani server, memakai bandwidth lebih banyak, dan membuat antarmuka terasa kurang efisien. Request yang datang tidak berurutan juga dapat menimbulkan masalah, misalnya hasil dari kata kunci lama selesai lebih lambat lalu menimpa hasil yang lebih baru.
+
+   Pada implementasi saya, debouncing dipadukan dengan `AbortController`. Ketika pencarian baru dimulai, request sebelumnya dibatalkan terlebih dahulu. Jadi, debouncing mengurangi jumlah request yang tidak perlu, sedangkan `AbortController` mencegah response lama ditampilkan setelah pengguna sudah memasukkan kata kunci baru. Kombinasi keduanya membuat pencarian AJAX tetap responsif tanpa harus me-reload halaman.
+
+2. **Jelaskan fungsi dari penggunaan await ketika kita menggunakan fetch()! Apa yang akan terjadi jika kita tidak menggunakan await?**
+
+   `fetch()` bekerja secara asynchronous, artinya JavaScript mengirim request ke server lalu langsung melanjutkan eksekusi baris berikutnya tanpa menunggu response selesai. Karena itu, `fetch()` mengembalikan `Promise`, bukan objek response yang sudah siap dipakai. Kata kunci `await` digunakan di dalam fungsi `async` untuk menunggu Promise tersebut selesai sebelum kode melanjutkan ke proses berikutnya.
+
+   Di `experience.js`, saya menggunakan `const response = await fetch(url)` agar status HTTP seperti `response.ok` atau `response.status` baru diperiksa setelah server benar-benar membalas. Setelah itu, saya juga memakai `const experienceData = await response.json()` karena proses mengubah body response JSON menjadi objek JavaScript juga membutuhkan waktu. Urutan ini memastikan bahwa kartu Experience baru dibangun setelah datanya tersedia.
+
+   Jika `await` tidak digunakan, variabel `response` masih berisi Promise. Kode seperti `response.ok` atau `response.json()` tidak dapat digunakan seperti pada objek response biasa dan dapat memicu error. Selain itu, proses menampilkan loading state, data kosong, toast error, atau daftar kartu dapat berjalan dalam urutan yang salah. Alternatifnya memang bisa menggunakan `.then()`, tetapi `async` dan `await` membuat alur request, validasi response, serta penanganan error dengan `try`/`catch` lebih mudah dibaca seperti kode sinkron.
+
+3. **Jelaskan apa itu serangan XSS (Cross-Site Scripting) dan mengapa data yang ditampilkan melalui AJAX/JavaScript lebih rentan terhadap serangan ini daripada data yang ditampilkan langsung melalui template Django!**
+
+   XSS atau Cross-Site Scripting adalah serangan ketika penyerang memasukkan kode berbahaya, biasanya HTML atau JavaScript, ke dalam data aplikasi agar kode tersebut dijalankan di browser pengunjung lain. Contohnya, pengguna dapat mencoba memasukkan `<img src="x" onerror="alert('XSS!')">` ke field judul atau deskripsi. Jika nilai itu kemudian diperlakukan sebagai HTML, browser dapat menjalankan atribut `onerror` tersebut sebagai JavaScript.
+
+   Data yang dirender langsung melalui template Django relatif lebih aman secara default karena Django melakukan auto-escaping pada variabel template. Karakter seperti `<`, `>`, tanda kutip, dan `&` akan diubah menjadi teks biasa ketika ditampilkan melalui `{{ experience.title }}`. Risiko meningkat saat memakai AJAX karena data JSON diambil oleh JavaScript lalu sering dirakit menjadi HTML melalui `innerHTML`. Jika nilai dari JSON langsung dimasukkan ke template string tanpa escaping, browser tidak membedakannya dari markup HTML yang memang dibuat oleh developer.
+
+   Saya menerapkan dua lapisan perlindungan. Pertama, pada server, method `clean_title()`, `clean_role()`, `clean_organization()`, dan `clean_description()` di `ExperienceForm` memakai `strip_tags()` untuk menghapus tag HTML dari input sebelum disimpan. Input yang hanya berisi tag HTML bahkan ditolak sebagai data tidak valid. Kedua, di browser, fungsi `escapeHtml()` mengubah karakter khusus pada setiap nilai JSON sebelum nilai tersebut dimasukkan ke `innerHTML`, termasuk pada teks kartu dan atribut seperti URL atau tooltip. Kedua lapisan tetap diperlukan karena sanitasi server mencegah data berbahaya tersimpan, sedangkan escaping di client menjaga tampilan tetap aman apabila data dari endpoint sudah mengandung karakter HTML.
