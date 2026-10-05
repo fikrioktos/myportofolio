@@ -188,3 +188,37 @@ class ExperienceForm(AccessCodeFormMixin, DateRangeFormMixin, forms.ModelForm):
             "started_at": forms.DateInput(attrs={"type": "date"}),
             "ended_at": forms.DateInput(attrs={"type": "date"}),
         }
+
+    @staticmethod
+    def _clean_required_text(value, field_name):
+        cleaned_value = strip_tags(value).strip()
+
+        if not cleaned_value:
+            raise ValidationError(
+                f"{field_name} tidak boleh hanya berisi tag HTML."
+            )
+
+        return cleaned_value
+
+    def clean_title(self):
+        return self._clean_required_text(
+            self.cleaned_data["title"],
+            "Judul experience",
+        )
+
+    def clean_role(self):
+        return self._clean_required_text(
+            self.cleaned_data["role"],
+            "Peran",
+        )
+
+    def clean_organization(self):
+        return strip_tags(
+            self.cleaned_data["organization"]
+        ).strip()
+
+    def clean_description(self):
+        return self._clean_required_text(
+            self.cleaned_data["description"],
+            "Deskripsi experience",
+        )

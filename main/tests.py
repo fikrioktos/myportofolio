@@ -72,46 +72,65 @@ class ExperienceTest(PortfolioTestCase):
         self.assertEqual(self.experience.category, "part-time")
         self.assertTrue(self.experience.is_ongoing)
 
-    def test_experience_page(self):
+    def test_experience_page_renders_ajax_shell(self):
         response = self.client.get(reverse("main:show_experience"))
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "experience.html")
-        self.assertContains(response, self.experience.title)
-        self.assertContains(response, self.experience.role)
-        self.assertContains(response, self.experience.organization)
-        self.assertContains(response, self.experience.description)
-        self.assertContains(response, "Present")
-        self.assertContains(response, f'href="{reverse("main:show_main")}"')
-        self.assertContains(response, f'href="{reverse("main:show_projects")}"')
+        self.assertContains(response, 'id="experience-search-form"')
+        self.assertContains(response, 'id="experience-grid"')
+        self.assertContains(response, 'id="experience-loading"')
+        self.assertContains(response, 'id="experience-empty"')
+        self.assertContains(response, 'id="experience-error"')
+        self.assertNotContains(response, self.experience.description)
 
-    def test_empty_experience_page(self):
+    def test_empty_experience_json_returns_empty_list(self):
         Experience.objects.all().delete()
-        response = self.client.get(reverse("main:show_experience"))
+        response = self.client.get(reverse("main:get_experience_json"))
 
-        self.assertContains(response, "Belum ada pengalaman yang ditambahkan.")
+        self.assertEqual(json.loads(response.content.decode("utf-8")), [])
 
-    def test_completed_experience(self):
+    def test_completed_experience_json_contains_end_date(self):
         self.experience.ended_at = date(2026, 6, 30)
         self.experience.save()
-        response = self.client.get(reverse("main:show_experience"))
+        response = self.client.get(reverse("main:get_experience_json"))
+        payload = json.loads(response.content.decode("utf-8"))
+        experience_data = next(
+            item["fields"]
+            for item in payload
+            if item["pk"] == str(self.experience.id)
+        )
 
-        self.assertFalse(self.experience.is_ongoing)
-        self.assertContains(response, str(self.experience.started_at.year))
-        self.assertContains(response, str(self.experience.ended_at.year))
-        self.assertNotContains(response, "Present")
+        self.assertFalse(experience_data["is_ongoing"])
+        self.assertEqual(experience_data["started_at"], "2025-08-01")
+        self.assertEqual(experience_data["ended_at"], "2026-06-30")
 
-    def test_experience_page_shows_organization_link(self):
+    def test_experience_json_includes_organization_link(self):
         self.experience.organization_url = "https://bem.cs.ui.ac.id/"
         self.experience.save()
-        response = self.client.get(reverse("main:show_experience"))
+        response = self.client.get(reverse("main:get_experience_json"))
+        payload = json.loads(response.content.decode("utf-8"))
+        experience_data = next(
+            item["fields"]
+            for item in payload
+            if item["pk"] == str(self.experience.id)
+        )
 
-        self.assertContains(response, self.experience.organization_url)
+        self.assertEqual(
+            experience_data["organization_url"],
+            "https://bem.cs.ui.ac.id/",
+        )
 
-    def test_experience_without_organization_link(self):
-        response = self.client.get(reverse("main:show_experience"))
+    def test_experience_json_uses_null_for_missing_organization_link(self):
+        response = self.client.get(reverse("main:get_experience_json"))
+        payload = json.loads(response.content.decode("utf-8"))
+        experience_data = next(
+            item["fields"]
+            for item in payload
+            if item["pk"] == str(self.experience.id)
+        )
 
-        self.assertNotContains(response, "Kunjungi situs")
+        self.assertIsNone(experience_data["organization_url"])
 
 
 class ProjectTest(PortfolioTestCase):
@@ -321,6 +340,129 @@ class ProjectAjaxCreateTest(PortfolioTestCase):
         project = Project.objects.get(title="Proyek AJAX")
         self.assertEqual(project.description, "Halo dunia")
         self.assertEqual(project.technologies, "JavaScript aman")
+
+
+@override_settings(PORTFOLIO_ACCESS_CODE=TEST_ACCESS_CODE)
+class ExperienceAjaxCreateTest(PortfolioTestCase):
+    """Endpoint tambah Experience AJAX dan sanitasi input teksnya."""
+
+    def ajax_payload(self, **overrides):
+        payload = {
+            "title": "Experience AJAX",
+            "role": "Teaching Assistant",
+            "organization": "Fasilkom UI",
+            "description": "Ditambahkan tanpa reload halaman.",
+            "category": "part-time",
+            "started_at": "2026-09-01",
+            "access_code": TEST_ACCESS_CODE,
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_ajax_create_only_accepts_post(self):
+        response = self.client.get(reverse("main:create_experience_ajax"))
+
+        self.assertEqual(response.status_code, 405)
+
+    def test_ajax_create_rejects_anonymous_user_with_json(self):
+        self.client.logout()
+        response = self.client.post(
+            reverse("main:create_experience_ajax"),
+            self.ajax_payload(),
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(response["Content-Type"].startswith("application/json"))
+        self.assertEqual(
+            json.loads(response.content.decode("utf-8"))["message"],
+            "Hanya pemilik portofolio yang dapat menambahkan experience.",
+        )
+        self.assertFalse(Experience.objects.filter(title="Experience AJAX").exists())
+
+    def test_ajax_create_saves_valid_experience_and_returns_json(self):
+        response = self.client.post(
+            reverse("main:create_experience_ajax"),
+            self.ajax_payload(),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response["Content-Type"].startswith("application/json"))
+        body = json.loads(response.content.decode("utf-8"))
+        experience = Experience.objects.get(title="Experience AJAX")
+        self.assertEqual(body["pk"], str(experience.id))
+        self.assertEqual(body["message"], "Experience berhasil ditambahkan.")
+
+    def test_ajax_create_rejects_html_only_title(self):
+        response = self.client.post(
+            reverse("main:create_experience_ajax"),
+            self.ajax_payload(title="<img src=x onerror=alert(1)>"),
+        )
+
+        self.assertEqual(response.status_code, 400)
+        errors = json.loads(response.content.decode("utf-8"))["errors"]
+        self.assertEqual(
+            errors["title"][0]["message"],
+            "Judul experience tidak boleh hanya berisi tag HTML.",
+        )
+        self.assertFalse(Experience.objects.filter(title__contains="img src").exists())
+
+    def test_ajax_create_strips_html_from_text_fields(self):
+        response = self.client.post(
+            reverse("main:create_experience_ajax"),
+            self.ajax_payload(
+                title="Experience <b>AJAX</b>",
+                role="Asisten <i>Dosen</i>",
+                organization="Fasilkom <strong>UI</strong>",
+                description="Halo <em>dunia</em>",
+            ),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        experience = Experience.objects.get(title="Experience AJAX")
+        self.assertEqual(experience.role, "Asisten Dosen")
+        self.assertEqual(experience.organization, "Fasilkom UI")
+        self.assertEqual(experience.description, "Halo dunia")
+
+
+class ExperienceAjaxStarTest(PortfolioTestCase):
+    """Star Experience diperbarui lewat JSON tanpa redirect halaman."""
+
+    def star_url(self):
+        return reverse(
+            "main:toggle_experience_star_ajax",
+            args=[self.experience.id],
+        )
+
+    def test_ajax_star_only_accepts_post(self):
+        response = self.client.get(self.star_url())
+
+        self.assertEqual(response.status_code, 405)
+
+    def test_ajax_star_rejects_anonymous_user_with_json(self):
+        self.client.logout()
+        response = self.client.post(self.star_url())
+
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(response["Content-Type"].startswith("application/json"))
+        self.assertFalse(self.experience.starred_by.exists())
+
+    def test_ajax_star_toggles_state_and_returns_updated_count(self):
+        response = self.client.post(self.star_url())
+
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.content.decode("utf-8"))
+        self.assertTrue(body["is_starred"])
+        self.assertEqual(body["star_count"], 1)
+        self.assertEqual(body["starred_by_names"], self.owner.username)
+        self.assertTrue(self.experience.starred_by.filter(pk=self.owner.pk).exists())
+
+        response = self.client.post(self.star_url())
+
+        body = json.loads(response.content.decode("utf-8"))
+        self.assertFalse(body["is_starred"])
+        self.assertEqual(body["star_count"], 0)
+        self.assertEqual(body["starred_by_names"], "")
+        self.assertFalse(self.experience.starred_by.exists())
 
 
 class ProjectDataDeliveryTest(PortfolioTestCase):
@@ -585,8 +727,8 @@ class ExperienceFormTest(PortfolioTestCase):
             Experience.objects.filter(title="Asisten Dosen DDPI").exists()
         )
 
-    def test_new_experience_appears_on_experience_page(self):
-        response = self.client.post(
+    def test_new_experience_appears_in_experience_json(self):
+        self.client.post(
             reverse("main:create_experience"),
             {
                 "title": "Asisten Dosen DDPI",
@@ -597,13 +739,13 @@ class ExperienceFormTest(PortfolioTestCase):
                 "started_at": "2026-02-01",
                 "access_code": TEST_ACCESS_CODE,
             },
-            follow=True,
         )
 
-        self.assertContains(response, "Asisten Dosen DDPI")
-        self.assertTrue(
-            Experience.objects.filter(title="Asisten Dosen DDPI").exists()
+        payload = json.loads(
+            self.client.get(reverse("main:get_experience_json")).content.decode("utf-8")
         )
+        titles = [item["fields"]["title"] for item in payload]
+        self.assertIn("Asisten Dosen DDPI", titles)
 
     def test_invalid_experience_form_does_not_save(self):
         response = self.client.post(
@@ -671,30 +813,36 @@ class ExperienceFormTest(PortfolioTestCase):
 
         self.assertEqual(response.status_code, 404)
 
-    def test_experience_page_shows_update_link(self):
+    def test_experience_page_exposes_ajax_update_url_template(self):
         response = self.client.get(reverse("main:show_experience"))
 
         self.assertContains(
-            response, reverse("main:update_experience", args=[self.experience.id])
+            response,
+            'updateTemplate: "{}"'.format(
+                reverse(
+                    "main:update_experience",
+                    args=[uuid.UUID("00000000-0000-0000-0000-000000000000")],
+                )
+            ),
         )
 
 
 @override_settings(PORTFOLIO_ACCESS_CODE=TEST_ACCESS_CODE)
 class ExperienceDeleteTest(PortfolioTestCase):
-    def test_experience_page_shows_delete_modal(self):
+    def test_experience_page_exposes_ajax_delete_url_template(self):
         response = self.client.get(reverse("main:show_experience"))
 
         self.assertContains(
-            response, f'id="delete-experience-{self.experience.id}"'
+            response,
+            'deleteTemplate: "{}"'.format(
+                reverse(
+                    "main:delete_experience",
+                    args=[uuid.UUID("00000000-0000-0000-0000-000000000000")],
+                )
+            ),
         )
-        self.assertContains(
-            response, f'popovertarget="delete-experience-{self.experience.id}"'
-        )
-        self.assertContains(response, "Hapus Experience?")
         self.assertContains(response, 'name="access_code"')
-        self.assertContains(
-            response, reverse("main:delete_experience", args=[self.experience.id])
-        )
+        self.assertContains(response, 'src="/static/js/experience.js"')
 
     def test_delete_experience_removes_data_and_redirects(self):
         response = self.client.post(
@@ -727,7 +875,7 @@ class ExperienceDeleteTest(PortfolioTestCase):
 
 
 class ExperienceDataDeliveryTest(PortfolioTestCase):
-    """Endpoint JSON/XML pengalaman dan halaman yang membaca deserialisasi."""
+    """Endpoint JSON/XML Experience dan shell AJAX-nya."""
 
     def test_experience_json_endpoint_returns_json(self):
         response = self.client.get(reverse("main:get_experience_json"))
@@ -748,12 +896,13 @@ class ExperienceDataDeliveryTest(PortfolioTestCase):
         self.assertTrue(response["Content-Type"].startswith("application/xml"))
         self.assertContains(response, self.experience.title)
 
-    def test_experience_page_still_renders_after_json_round_trip(self):
+    def test_experience_page_contains_ajax_card_builder(self):
         response = self.client.get(reverse("main:show_experience"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, self.experience.title)
-        self.assertContains(response, self.experience.role)
+        self.assertContains(response, 'src="/static/js/experience.js"')
+        self.assertContains(response, "window.experienceConfig")
+        self.assertNotContains(response, self.experience.description)
 
 
 @override_settings(PORTFOLIO_ACCESS_CODE=TEST_ACCESS_CODE)
@@ -963,7 +1112,9 @@ class EditorRoleTest(PortfolioTestCase):
         )
         self.assertTrue(Experience.objects.filter(pk=self.experience.pk).exists())
 
-    def test_editor_sees_edit_button_only(self):
+    def test_editor_receives_edit_only_ajax_configuration(self):
         response = self.editor_client.get(reverse("main:show_experience"))
-        self.assertContains(response, "Ubah")
+
+        self.assertContains(response, "canEdit: true")
+        self.assertContains(response, "isSuperuser: false")
         self.assertNotContains(response, "experience/add/")

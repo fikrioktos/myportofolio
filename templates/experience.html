@@ -1,58 +1,68 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Experience - {{ name }}{% endblock title %}
 {% block content %}
     <main>
         <section class="experience-section" id="experience">
             <div class="container">
                 <p class="section-kicker">Perjalanan saya sejauh ini</p>
+
                 <div class="section-header">
                     <h1>Experience</h1>
                     {% if user.is_superuser %}
-                        <a href="{% url 'main:create_experience' %}" class="button experience-add-button">
+                        <button type="button"
+                                class="button experience-add-button"
+                                popovertarget="add-experience-modal">
                             <span aria-hidden="true">+</span>
                             Tambah Experience
-                        </a>
+                        </button>
                     {% endif %}
                 </div>
 
-                <div class="timeline">
-                    {% for experience in experience_list %}
-                        <article class="timeline-item">
-                            <div class="timeline-meta">
-                                <span class="timeline-period">
-                                    {{ experience.started_at.year }} &ndash; {% if experience.is_ongoing %}Present{% else %}{{ experience.ended_at.year }}{% endif %}
-                                </span>
-                                <span class="timeline-role">{{ experience.role }}</span>
-                            </div>
-                            <div class="timeline-content">
-                                <h3>{{ experience.title }}</h3>
-                                {% if experience.organization %}
-                                    <p class="timeline-org">{{ experience.organization }}</p>
-                                {% endif %}
-                                {% if experience.organization_url %}
-                                    <a href="{{ experience.organization_url }}" class="timeline-link" target="_blank" rel="noopener">Kunjungi situs</a>
-                                {% endif %}
-                                <ul>
-                                    <li>{{ experience.description }}</li>
-                                </ul>
-                                <div class="timeline-actions">
-                                    {% include "components/star.html" with item=experience action="main:toggle_experience_star" %}
-                                    {% if can_edit %}
-                                        <a href="{% url 'main:update_experience' experience.id %}" class="timeline-action-link">Ubah</a>
-                                    {% endif %}
-                                    {% if user.is_superuser %}
-                                        {% include "components/experience_delete_modal.html" %}
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </article>
-                    {% empty %}
-                        <p class="empty-state">
-                            Belum ada pengalaman yang ditambahkan.
-                        </p>
-                    {% endfor %}
+                <form id="experience-search-form" class="project-search">
+                    <input type="search"
+                           id="experience-search-input"
+                           name="title"
+                           value="{{ title_query }}"
+                           placeholder="Cari berdasarkan judul experience"
+                           class="project-search__input"
+                           aria-label="Cari berdasarkan judul experience">
+                    <button type="submit" class="button">Cari</button>
+                </form>
+
+                <div id="experience-loading" class="empty-state hide">
+                    <p>Memuat experience...</p>
                 </div>
+
+                <div id="experience-error" class="empty-state hide">
+                    <p>Gagal memuat data experience. Silakan coba lagi.</p>
+                </div>
+
+                <div id="experience-empty" class="empty-state hide">
+                    <p>Belum ada experience yang ditambahkan atau ditemukan.</p>
+                </div>
+
+                <div id="experience-grid" class="timeline hide"></div>
             </div>
         </section>
     </main>
+
+    {% if user.is_superuser %}
+        {% include "components/experience_form_modal.html" %}
+    {% endif %}
+
+    <script>
+        window.experienceConfig = {
+            endpoints: {
+                list: "{% url 'main:get_experience_json' %}",
+                create: "{% url 'main:create_experience_ajax' %}",
+                updateTemplate: "{% url 'main:update_experience' '00000000-0000-0000-0000-000000000000' %}",
+                deleteTemplate: "{% url 'main:delete_experience' '00000000-0000-0000-0000-000000000000' %}",
+                starTemplate: "{% url 'main:toggle_experience_star_ajax' '00000000-0000-0000-0000-000000000000' %}",
+            },
+            isSuperuser: {{ user.is_superuser|yesno:"true,false" }},
+            canEdit: {{ can_edit|yesno:"true,false" }},
+        };
+    </script>
+    <script src="{% static 'js/experience.js' %}"></script>
 {% endblock content %}
