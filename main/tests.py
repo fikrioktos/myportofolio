@@ -546,16 +546,19 @@ class ProjectDataDeliveryTest(PortfolioTestCase):
 @override_settings(PORTFOLIO_ACCESS_CODE=TEST_ACCESS_CODE)
 class ProjectDeleteTest(PortfolioTestCase):
     def test_projects_page_includes_ajax_delete_template(self):
+        # Tutorial 7: delete sekarang lewat API DRF (tombol data-action +
+        # confirm), bukan lagi form access_code inline dari Tutorial 5.
         response = self.client.get(reverse("main:show_projects"))
 
-        self.assertContains(
+        self.assertContains(response, 'data-action="delete"')
+        self.assertContains(response, "Yakin ingin menghapus project ini?")
+        self.assertNotContains(
             response,
-            'const deleteUrl = "{}"'.format(
-                reverse("main:delete_project", args=[uuid.UUID("00000000-0000-0000-0000-000000000000")])
+            reverse(
+                "main:delete_project",
+                args=[uuid.UUID("00000000-0000-0000-0000-000000000000")],
             ),
         )
-        self.assertContains(response, 'name="access_code"')
-        self.assertContains(response, "Yakin ingin menghapus project ini?")
 
     def test_delete_project_removes_data_and_redirects(self):
         response = self.client.post(
