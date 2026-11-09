@@ -8,6 +8,7 @@ import datetime
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 
 from main.forms import ExperienceForm, ProjectForm, access_code_error
@@ -39,6 +40,7 @@ def show_main(request):
     return render(request, "index.html", context)
 
 
+@ensure_csrf_cookie
 def show_experience(request):
     title_query = request.GET.get("title", "").strip()
 
@@ -46,7 +48,7 @@ def show_experience(request):
         "name": "Fikri Okto Setiadi",
         "title_query": title_query,
         "can_edit": can_edit_entry(request.user),
-        "form": ExperienceForm(),
+        "category_choices": Experience.EXPERIENCE_CHOICES,
     }
     return render(request, "experience.html", context)
 
