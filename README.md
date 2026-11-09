@@ -54,7 +54,8 @@ myportofolio/
 │   ├── urls.py              # named routes aplikasi main
 │   ├── forms.py             # ModelForm (Project, Experience) + mixin kode akses & rentang tanggal
 │   ├── admin.py             # registrasi model ke Django Admin
-│   ├── tests.py             # unit test (70 test, hijau)
+│   ├── tests.py             # unit test halaman & endpoint JSON/XML (50 test, hijau)
+│   ├── tests_api.py         # unit test API DRF Experience & Project (27 test, hijau)
 │   └── migrations/          # migrasi skema + data migration seed
 ├── templates/
 │   ├── base.html            # kerangka utama (extend oleh semua halaman)
@@ -178,6 +179,18 @@ git push pws master
 - Fitur star Experience juga berjalan tanpa reload halaman. Event delegation pada container daftar memastikan tombol star pada kartu yang baru dirender tetap dapat digunakan, lalu UI diperbarui dari respons JSON terbaru.
 - Perlindungan XSS diterapkan dalam dua lapisan: `strip_tags` pada `ExperienceForm` membersihkan input teks di server, sedangkan fungsi `escapeHtml()` mengamankan semua nilai dari JSON sebelum disisipkan ke `innerHTML`, termasuk nilai teks dan atribut URL.
 - Logika JavaScript halaman dipisahkan ke `static/js/experience.js`, sementara template hanya menyediakan struktur HTML dan konfigurasi URL Django melalui `window.experienceConfig`.
+
+### ✅ Tugas 6 — Django REST Framework
+
+- Halaman `/experience/` kini memakai API DRF di `/api/v1/experiences/` (daftar dengan pencarian `?title=`, detail, dan `star`). Route lama hasil Tugas 3 sampai Tugas 5 yang sudah tidak dipakai halaman (`experience/add/`, `experience/<id>/update/`, `experience/<id>/delete/`, `experience/<id>/star/`, `experience/<id>/star-ajax/`, `experience/add-ajax/`) dihapus dari `main/urls.py`, sedangkan endpoint baca JSON/XML dari Tutorial 03 (`/api/experience/` dan `/api/experience/xml/`) tetap dipertahankan. Keduanya hanya membaca data dan tidak mengubahnya, sehingga tidak memberi hak lebih luas daripada API v1.
+- `ExperienceSerializer` (`main/serializers.py`) memakai daftar `fields` eksplisit. Field `star_count`, `is_starred`, dan `starred_by_names` dihitung dan bersifat read-only. Field sensitif akun tidak ikut tampil.
+- Validasi teks memakai `validate_<field>` dengan `strip_tags`, serta validasi rentang tanggal di serializer.
+- Permission: `IsPortfolioOwnerOrEditorOrReadOnly` untuk daftar dan detail. Pengunjung hanya bisa membaca. Editor boleh PUT/PATCH tetapi ditolak untuk POST dan DELETE. Superuser boleh semua. Endpoint star memakai `IsAuthenticated`, dan akun pemberi star selalu diambil dari `request.user`.
+- View berbasis fungsi dengan `@api_view` dan `SessionAuthentication` di `main/api_views.py`, dengan status 201, 204, 400, 403, dan 404 sesuai spek.
+- Modal Experience dipakai untuk tambah dan ubah. Mode ubah mengirim `PATCH` ke API, dan pesan error 400 maupun 403 ditampilkan lewat toast. Header `X-CSRFToken` disertakan pada setiap permintaan yang mengubah data.
+- `@ensure_csrf_cookie` ditambahkan ke `show_experience` supaya cookie `csrftoken` tersedia untuk pengguna biasa dan Editor.
+- Test (`main/tests_api.py`, `APITestCase`) mencakup setiap peran, pemeriksaan isi database pada penolakan, validasi, star termasuk penolakan untuk pengunjung, dan `APIClient(enforce_csrf_checks=True)` dengan `.login()` yang membuktikan permintaan tanpa token CSRF ditolak.
+- `python manage.py test main` hijau: 77 test, OK.
 
 ### Known Issues & Tech Debt
 
@@ -357,3 +370,25 @@ Selama pengerjaan Tugas 4, keterbatasan nomor 5 terulang dengan bentuk yang lebi
    Data yang dirender langsung melalui template Django relatif lebih aman secara default karena Django melakukan auto-escaping pada variabel template. Karakter seperti `<`, `>`, tanda kutip, dan `&` akan diubah menjadi teks biasa ketika ditampilkan melalui `{{ experience.title }}`. Risiko meningkat saat memakai AJAX karena data JSON diambil oleh JavaScript lalu sering dirakit menjadi HTML melalui `innerHTML`. Jika nilai dari JSON langsung dimasukkan ke template string tanpa escaping, browser tidak membedakannya dari markup HTML yang memang dibuat oleh developer.
 
    Saya menerapkan dua lapisan perlindungan. Pertama, pada server, method `clean_title()`, `clean_role()`, `clean_organization()`, dan `clean_description()` di `ExperienceForm` memakai `strip_tags()` untuk menghapus tag HTML dari input sebelum disimpan. Input yang hanya berisi tag HTML bahkan ditolak sebagai data tidak valid. Kedua, di browser, fungsi `escapeHtml()` mengubah karakter khusus pada setiap nilai JSON sebelum nilai tersebut dimasukkan ke `innerHTML`, termasuk pada teks kartu dan atribut seperti URL atau tooltip. Kedua lapisan tetap diperlukan karena sanitasi server mencegah data berbahaya tersimpan, sedangkan escaping di client menjaga tampilan tetap aman apabila data dari endpoint sudah mengandung karakter HTML.
+
+### Tugas 6
+
+1. **Apa yang dimaksud dengan REST, dan mengapa mengembalikan JSON saja belum cukup untuk disebut RESTful? Apa perbedaan PUT dan PATCH?**
+
+   REST adalah gaya arsitektur untuk layanan web yang memperlakukan setiap data sebagai *resource* dengan alamat (URL) sendiri, dan memakai method HTTP sesuai artinya: GET untuk membaca, POST untuk membuat, PUT dan PATCH untuk mengubah, DELETE untuk menghapus. Respons JSON saja belum cukup karena endpoint yang selalu memakai `POST /api/doAction` dengan JSON tetap RPC, bukan REST. Ciri lain yang ikut dipenuhi adalah status code yang bermakna dan representasi resource yang bisa diambil ulang lewat URL-nya.
+
+   PUT mengganti seluruh resource dengan representasi yang dikirim, sehingga field yang tidak disertakan dianggap kosong. PATCH hanya mengubah field yang dikirim. Di proyek ini `IsPortfolioOwnerOrEditorOrReadOnly` mengizinkan Editor memakai keduanya, dan frontend memakai PATCH karena modal ubah hanya mengirim field yang diisi. Contoh: Editor mengubah `role` saja cukup dengan `PATCH {"role": "Senior Intern"}`, sedangkan PUT akan mewajibkan seluruh field lain ikut dikirim.
+
+2. **Apa peran serializer pada Django REST Framework, dan apa keuntungannya dibanding merakit dictionary secara manual dengan `JsonResponse` seperti di Tutorial 05?**
+
+   Serializer menerjemahkan dua arah: dari model ke dictionary untuk output, dan dari JSON ke data tervalidasi untuk input. Di `ExperienceSerializer`, satu definisi `fields` menentukan apa yang keluar, field read-only mana yang dihitung (`star_count`, `is_starred`), dan aturan validasi (`validate_title`, validasi rentang tanggal). Dengan dictionary manual, aturan-aturan itu tersebar di view dan mudah berbeda antar endpoint. Serializer juga mencegah kebocoran data: karena `fields` ditulis eksplisit, kolom sensitif tidak ikut terkirim meski ditambahkan ke model.
+
+3. **Apa perbedaan autentikasi dan otorisasi, dan mengapa hak akses harus diperiksa dengan permission class di server, bukan hanya dengan menyembunyikan tombol di template?**
+
+   Autentikasi menjawab siapa pengguna itu (login, session). Otorisasi menjawab apakah pengguna itu boleh melakukan aksi tertentu. Tombol di template hanya mengatur tampilan. Siapa pun bisa memanggil endpoint langsung lewat `curl` atau DevTools tanpa melihat tombol apa pun. Karena itu di proyek ini tombol Ubah dan Hapus memang disembunyikan untuk UI, tetapi keputusannya tetap diambil di `permission_classes` pada setiap view. Test `test_plain_user_cannot_update` dan `test_editor_can_patch_but_not_create_or_delete` membuktikan penolakan terjadi di server.
+
+4. **Mengapa permintaan yang mengubah data tetap memerlukan token CSRF ketika API memakai `SessionAuthentication`? Mengapa `force_authenticate` tidak cukup untuk membuktikan perlindungan CSRF?**
+
+   Dengan `SessionAuthentication`, browser otomatis mengirim cookie session ke domain mana pun yang membuat request, termasuk dari halaman jahat. Tanpa token CSRF, halaman lain bisa memicu `POST` atau `DELETE` atas nama pengguna yang sedang login. Token CSRF membuktikan bahwa request berasal dari halaman yang memang dilayani server ini, karena nilainya ada di cookie dan harus dikirim ulang sebagai header `X-CSRFToken` oleh JavaScript kita.
+
+   `force_authenticate` melewati seluruh proses autentikasi dan juga memakai `APIClient` yang tidak memeriksa CSRF secara default, sehingga test dengan `force_authenticate` hanya membuktikan permission class bekerja. Untuk membuktikan CSRF berjalan, test memakai `APIClient(enforce_csrf_checks=True)` dengan `.login()` sungguhan (`test_session_write_without_csrf_is_rejected`), supaya jalur session dan pemeriksaan token benar-benar dilewati.
