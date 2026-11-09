@@ -1,9 +1,7 @@
 from django.urls import path
 
 from main.views import (
-    create_experience,
     create_project,
-    delete_experience,
     delete_project,
     get_experience_json,
     get_experience_xml,
@@ -12,15 +10,11 @@ from main.views import (
     show_experience,
     show_main,
     show_projects,
-    update_experience,
     register,
     login_user,
     logout_user,
     toggle_star,
-    toggle_experience_star,
-    toggle_experience_star_ajax,
     create_project_ajax,
-    create_experience_ajax,
 )
 
 app_name = "main"
@@ -28,17 +22,6 @@ app_name = "main"
 urlpatterns = [
     path("", show_main, name="show_main"),
     path("experience/", show_experience, name="show_experience"),
-    path("experience/add/", create_experience, name="create_experience"),
-    path(
-        "experience/<uuid:experience_id>/update/",
-        update_experience,
-        name="update_experience",
-    ),
-    path(
-        "experience/<uuid:experience_id>/delete/",
-        delete_experience,
-        name="delete_experience",
-    ),
     path("projects/", show_projects, name="show_projects"),
     path("projects/add/", create_project, name="create_project"),
     path(
@@ -58,20 +41,5 @@ urlpatterns = [
         toggle_star,
         name="toggle_star",
     ),
-    path(
-        "experience/<uuid:experience_id>/star/",
-        toggle_experience_star,
-        name="toggle_experience_star",
-    ),
-    path(
-        "experience/<uuid:experience_id>/star-ajax/",
-        toggle_experience_star_ajax,
-        name="toggle_experience_star_ajax",
-    ),
     path("projects/add-ajax/", create_project_ajax, name="create_project_ajax"),
-    path(
-        "experience/add-ajax/",
-        create_experience_ajax,
-        name="create_experience_ajax",
-    ),
 ]

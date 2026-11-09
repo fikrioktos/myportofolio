@@ -5,11 +5,7 @@
         return;
     }
 
-    const {
-        endpoints,
-        isSuperuser,
-        canEdit,
-    } = config;
+    const { endpoints, isSuperuser, isAuthenticated, canEdit } = config;
     const dummyUuid = "00000000-0000-0000-0000-000000000000";
     const searchDebounceDelay = 300;
 
@@ -19,10 +15,17 @@
     const gridContainer = document.getElementById("experience-grid");
     const searchForm = document.getElementById("experience-search-form");
     const searchInput = document.getElementById("experience-search-input");
+    const formModal = document.getElementById("experience-form-modal");
     const experienceForm = document.getElementById("experience-form");
+    const formTitle = document.getElementById("experience-form-modal-title");
+    const submitButton = document.getElementById("experience-form-submit");
 
     let searchDebounceTimer;
     let experiencesAbortController;
+    // null = mode tambah (POST); berisi id = mode ubah (PATCH)
+    let editingExperienceId = null;
+    // Snapshot data dari API supaya modal ubah bisa diisi tanpa fetch ulang
+    const experienceById = new Map();
 
     function displayPageSection({
         showLoading = false,
@@ -46,48 +49,70 @@
     }
 
     function getCookie(name) {
-        let cookieValue = null;
-
-        if (document.cookie && document.cookie !== "") {
-            const cookies = document.cookie.split(";");
-
-            for (let index = 0; index < cookies.length; index += 1) {
-                const cookie = cookies[index].trim();
-
-                if (cookie.substring(0, name.length + 1) === `${name}=`) {
-                    cookieValue = decodeURIComponent(
-                        cookie.substring(name.length + 1)
-                    );
-                    break;
-                }
-            }
-        }
-
-        return cookieValue;
+        const prefix = `${name}=`;
+        const cookie = document.cookie
+            .split(";")
+            .map((value) => value.trim())
+            .find((value) => value.startsWith(prefix));
+        return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null;
     }
 
-    function getExperienceUrl(template, experienceId) {
+    function endpointFor(template, experienceId) {
         return template.replace(dummyUuid, experienceId);
     }
 
-    function getStarTitle(starCount, starredByNames) {
-        return starCount > 0
-            ? `Dibintangi oleh ${escapeHtml(starredByNames)}`
-            : "Jadilah yang pertama memberi star";
+    // Pesan error DRF: {"field": ["..."]} atau {"detail": "..."}
+    function apiErrorMessage(data, status) {
+        const messages = Object.values(data)
+            .flat()
+            .filter((value) => typeof value === "string");
+        return messages.join(" ") || `Terjadi kesalahan (HTTP ${status}).`;
     }
 
-    function buildStarButton(starUrl, experience) {
+    // Satu tempat untuk POST/PATCH/DELETE/star: JSON, CSRF, dan error konsisten
+    async function writeExperience(url, method, payload) {
+        const response = await fetch(url, {
+            method,
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie("csrftoken"),
+            },
+            body: payload === undefined ? undefined : JSON.stringify(payload),
+        });
+
+        if (response.status === 204) {
+            return null;
+        }
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            throw new Error(apiErrorMessage(data, response.status));
+        }
+
+        return data;
+    }
+
+    function buildStarButton(experience) {
+        if (!isAuthenticated) {
+            return `<a href="/login/" class="button" title="Login untuk memberi star">
+                <span aria-hidden="true">★</span> Star
+                <span class="star-count">${escapeHtml(experience.star_count)}</span>
+            </a>`;
+        }
+
         const isStarredClass = experience.is_starred ? " is-starred" : "";
         const starText = experience.is_starred ? "Unstar" : "Star";
-        const starTitle = getStarTitle(
-            experience.star_count,
-            experience.starred_by_names
-        );
+        const starTitle = experience.star_count > 0
+            ? `Dibintangi oleh ${escapeHtml(experience.starred_by_names)}`
+            : "Jadilah yang pertama memberi star";
 
         return `
             <button type="button"
                     class="button button-star${isStarredClass}"
-                    data-star-url="${escapeHtml(starUrl)}"
+                    data-action="star"
+                    data-id="${escapeHtml(experience.id)}"
                     title="${starTitle}">
                 <span aria-hidden="true">★</span>
                 ${starText}
@@ -96,47 +121,23 @@
         `;
     }
 
-    function buildExperienceCardElement(item) {
-        const experience = item.fields;
-        const experienceId = item.pk;
+    function buildExperienceCardElement(experience) {
         const articleElement = document.createElement("article");
+        const startYear = escapeHtml(experience.started_at).slice(0, 4);
         const period = experience.is_ongoing
-            ? `${escapeHtml(experience.started_at).slice(0, 4)} – Present`
-            : `${escapeHtml(experience.started_at).slice(0, 4)} – ${escapeHtml(experience.ended_at).slice(0, 4)}`;
+            ? `${startYear} – Present`
+            : `${startYear} – ${escapeHtml(experience.ended_at).slice(0, 4)}`;
         const organizationLink = experience.organization_url
             ? `<a href="${escapeHtml(experience.organization_url)}"
                   class="timeline-link"
                   target="_blank"
                   rel="noopener">Kunjungi situs</a>`
             : "";
-        const updateUrl = getExperienceUrl(
-            endpoints.updateTemplate,
-            experienceId
-        );
-        const deleteUrl = getExperienceUrl(
-            endpoints.deleteTemplate,
-            experienceId
-        );
-        const starUrl = getExperienceUrl(endpoints.starTemplate, experienceId);
         const updateHtml = canEdit
-            ? `<a href="${escapeHtml(updateUrl)}" class="timeline-action-link">Ubah</a>`
+            ? `<button type="button" class="timeline-action-link" data-action="edit" data-id="${escapeHtml(experience.id)}">Ubah</button>`
             : "";
-        const csrfToken = getCookie("csrftoken");
         const deleteHtml = isSuperuser
-            ? `<form method="post" action="${escapeHtml(deleteUrl)}" class="delete-form">
-                    <input type="hidden"
-                           name="csrfmiddlewaretoken"
-                           value="${escapeHtml(csrfToken)}">
-                    <input type="password"
-                           name="access_code"
-                           placeholder="Kode akses"
-                           required>
-                    <button type="submit"
-                            class="button button-danger experience-delete-button"
-                            onclick="return confirm('Yakin ingin menghapus experience ini?');">
-                        Hapus
-                    </button>
-                </form>`
+            ? `<button type="button" class="button button-danger experience-delete-button" data-action="delete" data-id="${escapeHtml(experience.id)}">Hapus</button>`
             : "";
 
         articleElement.className = "timeline-item";
@@ -160,7 +161,7 @@
                 </ul>
 
                 <div class="timeline-actions">
-                    ${buildStarButton(starUrl, experience)}
+                    ${buildStarButton(experience)}
                     ${updateHtml}
                     ${deleteHtml}
                 </div>
@@ -180,30 +181,34 @@
         try {
             displayPageSection({ showLoading: true });
 
-            const url = searchQuery
-                ? `${endpoints.list}?title=${encodeURIComponent(searchQuery)}`
-                : endpoints.list;
+            const url = new URL(endpoints.list, window.location.origin);
+            if (searchQuery) {
+                url.searchParams.set("title", searchQuery);
+            }
+
             const response = await fetch(url, {
                 headers: { Accept: "application/json" },
                 signal: experiencesAbortController.signal,
             });
 
             if (!response.ok) {
-                throw new Error("Failed to fetch experience data");
+                throw new Error(`HTTP ${response.status}`);
             }
 
-            const experienceData = await response.json();
+            const experiences = await response.json();
 
-            if (experienceData.length === 0) {
-                displayPageSection({ showEmpty: true });
-                return;
-            }
-
-            gridContainer.innerHTML = "";
-            experienceData.forEach((item) => {
-                gridContainer.appendChild(buildExperienceCardElement(item));
+            experienceById.clear();
+            experiences.forEach((experience) => {
+                experienceById.set(experience.id, experience);
             });
-            displayPageSection({ showGrid: true });
+
+            gridContainer.replaceChildren(
+                ...experiences.map(buildExperienceCardElement)
+            );
+            displayPageSection({
+                showGrid: experiences.length > 0,
+                showEmpty: experiences.length === 0,
+            });
         } catch (error) {
             if (error.name === "AbortError") {
                 return;
@@ -214,107 +219,125 @@
         }
     }
 
-    async function toggleExperienceStar(starButton) {
-        starButton.disabled = true;
+    function openExperienceForm(experience = null) {
+        editingExperienceId = experience ? experience.id : null;
+        formTitle.textContent = experience
+            ? "Ubah Experience"
+            : "Tambah Experience Baru";
+        submitButton.textContent = experience
+            ? "Simpan Perubahan"
+            : "Tambah Experience";
 
-        try {
-            const response = await fetch(starButton.dataset.starUrl, {
-                method: "POST",
-                headers: {
-                    "X-CSRFToken": getCookie("csrftoken"),
-                },
-            });
-            const result = await response.json().catch(() => ({}));
-
-            if (!response.ok) {
-                showToast(
-                    "Tidak dapat memberi star",
-                    result.message || "Silakan login terlebih dahulu.",
-                    "error"
-                );
-                return;
-            }
-
-            const nextExperience = {
-                is_starred: result.is_starred,
-                star_count: result.star_count,
-                starred_by_names: result.starred_by_names,
-            };
-            starButton.outerHTML = buildStarButton(
-                starButton.dataset.starUrl,
-                nextExperience
-            );
-        } catch (error) {
-            console.error("Error toggling experience star:", error);
-            showToast(
-                "Tidak dapat memberi star",
-                "Tidak dapat terhubung ke server. Silakan coba lagi.",
-                "error"
-            );
-        } finally {
-            starButton.disabled = false;
+        experienceForm.reset();
+        if (experience) {
+            experienceForm.elements.title.value = experience.title;
+            experienceForm.elements.role.value = experience.role;
+            experienceForm.elements.organization.value = experience.organization;
+            experienceForm.elements.description.value = experience.description;
+            experienceForm.elements.category.value = experience.category;
+            experienceForm.elements.thumbnail.value = experience.thumbnail || "";
+            experienceForm.elements.organization_url.value = experience.organization_url || "";
+            experienceForm.elements.started_at.value = experience.started_at;
+            experienceForm.elements.ended_at.value = experience.ended_at || "";
         }
+
+        formModal.showPopover();
     }
 
-    function closeExperienceModal() {
-        const modal = document.getElementById("add-experience-modal");
+    // Field URL & tanggal kosong dikirim sebagai null, bukan string kosong
+    function readExperiencePayload() {
+        const fields = new FormData(experienceForm);
+        const nullable = ["thumbnail", "organization_url", "ended_at"];
 
-        if (modal) {
-            modal.hidePopover();
-        }
+        return Object.fromEntries(
+            [
+                "title", "role", "organization", "description", "category",
+                "thumbnail", "organization_url", "started_at", "ended_at",
+            ].map((name) => {
+                const value = fields.get(name);
+                return [name, nullable.includes(name) && !value ? null : value];
+            })
+        );
     }
 
-    async function addExperience(event) {
+    async function saveExperience(event) {
         event.preventDefault();
-
-        const submitButton = experienceForm.querySelector('button[type="submit"]');
         submitButton.disabled = true;
 
-        try {
-            const response = await fetch(endpoints.create, {
-                method: "POST",
-                headers: {
-                    "X-CSRFToken": getCookie("csrftoken"),
-                },
-                body: new FormData(experienceForm),
-            });
-            const result = await response.json().catch(() => ({}));
+        const isEdit = editingExperienceId !== null;
 
-            if (response.status === 201) {
-                experienceForm.reset();
-                closeExperienceModal();
-                showToast(
-                    "Berhasil",
-                    "Experience baru berhasil ditambahkan!",
-                    "success"
+        try {
+            const payload = readExperiencePayload();
+
+            if (isEdit) {
+                await writeExperience(
+                    endpointFor(endpoints.detailTemplate, editingExperienceId),
+                    "PATCH",
+                    payload
                 );
-                fetchExperiences(searchInput.value.trim());
-                return;
+            } else {
+                await writeExperience(endpoints.list, "POST", payload);
             }
 
-            const errorMessages = result.errors
-                ? Object.values(result.errors)
-                    .flat()
-                    .map((error) => error.message)
-                : [
-                    result.message
-                    || `Terjadi kesalahan (status ${response.status}).`,
-                ];
-
+            formModal.hidePopover();
             showToast(
-                "Gagal menambahkan experience",
-                errorMessages.join(" "),
-                "error"
+                "Berhasil",
+                isEdit
+                    ? "Experience berhasil diperbarui!"
+                    : "Experience baru berhasil ditambahkan!",
+                "success"
             );
+            await fetchExperiences(searchInput.value.trim());
         } catch (error) {
-            console.error("Error adding experience:", error);
+            console.error("Error saving experience:", error);
             showToast(
-                "Gagal menambahkan experience",
-                "Tidak dapat terhubung ke server. Silakan coba lagi.",
+                isEdit ? "Gagal memperbarui experience" : "Gagal menambahkan experience",
+                error.message,
                 "error"
             );
         } finally {
             submitButton.disabled = false;
+        }
+    }
+
+    async function runCardAction(button) {
+        const action = button.dataset.action;
+        const experienceId = button.dataset.id;
+
+        if (action === "edit") {
+            openExperienceForm(experienceById.get(experienceId));
+            return;
+        }
+
+        if (action === "delete" && !window.confirm("Yakin ingin menghapus experience ini?")) {
+            return;
+        }
+
+        button.disabled = true;
+
+        try {
+            if (action === "star") {
+                await writeExperience(
+                    endpointFor(endpoints.starTemplate, experienceId),
+                    "POST"
+                );
+            } else {
+                await writeExperience(
+                    endpointFor(endpoints.detailTemplate, experienceId),
+                    "DELETE"
+                );
+            }
+
+            const successMessage = action === "star"
+                ? "Star diperbarui!"
+                : "Experience berhasil dihapus!";
+            showToast("Berhasil", successMessage, "success");
+            await fetchExperiences(searchInput.value.trim());
+        } catch (error) {
+            console.error("Error:", error);
+            showToast("Permintaan gagal", error.message, "error");
+        } finally {
+            button.disabled = false;
         }
     }
 
@@ -324,10 +347,7 @@
 
     searchInput.addEventListener("input", () => {
         clearTimeout(searchDebounceTimer);
-        searchDebounceTimer = setTimeout(
-            searchExperiences,
-            searchDebounceDelay
-        );
+        searchDebounceTimer = setTimeout(searchExperiences, searchDebounceDelay);
     });
 
     searchForm.addEventListener("submit", (event) => {
@@ -336,16 +356,22 @@
         searchExperiences();
     });
 
+    // Event delegation: satu listener untuk semua tombol di kartu
     gridContainer.addEventListener("click", (event) => {
-        const starButton = event.target.closest("[data-star-url]");
+        const button = event.target.closest("button[data-action]");
 
-        if (starButton) {
-            toggleExperienceStar(starButton);
+        if (button && !button.disabled) {
+            runCardAction(button);
         }
     });
 
     if (experienceForm) {
-        experienceForm.addEventListener("submit", addExperience);
+        experienceForm.addEventListener("submit", saveExperience);
+    }
+
+    const addButton = document.querySelector(".experience-add-button");
+    if (addButton) {
+        addButton.addEventListener("click", () => openExperienceForm(null));
     }
 
     fetchExperiences(searchInput.value.trim());

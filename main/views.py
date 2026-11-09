@@ -8,9 +8,10 @@ import datetime
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 
-from main.forms import ExperienceForm, ProjectForm, access_code_error
+from main.forms import ProjectForm, access_code_error
 from main.models import Experience, Project
 
 
@@ -39,6 +40,7 @@ def show_main(request):
     return render(request, "index.html", context)
 
 
+@ensure_csrf_cookie
 def show_experience(request):
     title_query = request.GET.get("title", "").strip()
 
@@ -46,7 +48,7 @@ def show_experience(request):
         "name": "Fikri Okto Setiadi",
         "title_query": title_query,
         "can_edit": can_edit_entry(request.user),
-        "form": ExperienceForm(),
+        "category_choices": Experience.EXPERIENCE_CHOICES,
     }
     return render(request, "experience.html", context)
 
@@ -236,88 +238,6 @@ def delete_project(request, project_id):
     return redirect("main:show_projects")
 
 
-@login_required(login_url="/login/")
-def create_experience(request):
-    if not request.user.is_superuser:
-        raise PermissionDenied
-    
-    if request.method == "POST":
-        data = request.POST.copy()
-
-        # Request dari curl/Postman bisa mengirim kode akses lewat header, jadi
-        # field password di form tidak perlu diisi.
-        header_code = request.headers.get("X-Portfolio-Key")
-        if header_code:
-            data["access_code"] = header_code
-
-        form = ExperienceForm(data)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Pengalaman baru berhasil ditambahkan!")
-            return redirect("main:show_experience")
-    else:
-        form = ExperienceForm()
-
-    context = {
-        "name": "Fikri Okto Setiadi",
-        "form": form,
-    }
-    return render(request, "experience_form.html", context)
-
-
-@login_required(login_url="/login/")
-def update_experience(request, experience_id):
-    experience = get_object_or_404(Experience, pk=experience_id)
-
-    if not can_edit_entry(request.user):
-        raise PermissionDenied
-
-    if request.method == "POST":
-        data = request.POST.copy()
-
-        # Request dari curl/Postman bisa mengirim kode akses lewat header, jadi
-        # field password di form tidak perlu diisi.
-        header_code = request.headers.get("X-Portfolio-Key")
-        if header_code:
-            data["access_code"] = header_code
-
-        form = ExperienceForm(data, instance=experience)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Pengalaman berhasil diperbarui!")
-            return redirect("main:show_experience")
-    else:
-        form = ExperienceForm(instance=experience)
-
-    context = {
-        "name": "Fikri Okto Setiadi",
-        "form": form,
-        "experience": experience,
-    }
-    return render(request, "experience_form.html", context)
-
-
-@login_required(login_url="/login/")
-def delete_experience(request, experience_id):
-    experience = get_object_or_404(Experience, pk=experience_id)
-
-    if not request.user.is_superuser:
-        raise PermissionDenied
-
-    if request.method == "POST":
-        error = access_code_error(_supplied_access_code(request))
-
-        if error:
-            messages.error(request, error)
-            return redirect("main:show_experience")
-
-        experience.delete()
-        messages.success(request, "Pengalaman berhasil dihapus!")
-        return redirect("main:show_experience")
-
-    return redirect("main:show_experience")
-
-
 def register(request):
     form = UserCreationForm(request.POST or None)
 
@@ -373,50 +293,6 @@ def toggle_star(request, project_id):
     return redirect("main:show_projects")
 
 
-@login_required(login_url="/login/")
-def toggle_experience_star(request, experience_id):
-    experience = get_object_or_404(Experience, pk=experience_id)
-
-    if request.method == "POST":
-        if request.user in experience.starred_by.all():
-            experience.starred_by.remove(request.user)
-        else:
-            experience.starred_by.add(request.user)
-
-    return redirect("main:show_experience")
-
-
-@require_POST
-def toggle_experience_star_ajax(request, experience_id):
-    """Toggle star Experience dan kembalikan state baru tanpa reload halaman."""
-    if not request.user.is_authenticated:
-        return JsonResponse(
-            {"message": "Silakan login untuk memberi star."},
-            status=403,
-        )
-
-    experience = get_object_or_404(
-        Experience.objects.prefetch_related("starred_by"),
-        pk=experience_id,
-    )
-
-    if request.user in experience.starred_by.all():
-        experience.starred_by.remove(request.user)
-    else:
-        experience.starred_by.add(request.user)
-
-    starred_users = list(experience.starred_by.all())
-    return JsonResponse(
-        {
-            "star_count": len(starred_users),
-            "is_starred": request.user in starred_users,
-            "starred_by_names": ", ".join(
-                user.username for user in starred_users
-            ),
-        }
-    )
-
-
 @require_POST
 def create_project_ajax(request):
     if not request.user.is_superuser:
@@ -434,36 +310,3 @@ def create_project_ajax(request):
         )
 
     return JsonResponse({"errors": form.errors.get_json_data()}, status=400)
-
-
-@require_POST
-def create_experience_ajax(request):
-    if not request.user.is_superuser:
-        return JsonResponse(
-            {
-                "message": (
-                    "Hanya pemilik portofolio yang dapat "
-                    "menambahkan experience."
-                )
-            },
-            status=403,
-        )
-
-    form = ExperienceForm(request.POST)
-
-    if form.is_valid():
-        experience = form.save()
-
-        return JsonResponse(
-            {
-                "message": "Experience berhasil ditambahkan.",
-                "pk": str(experience.id),
-            },
-            status=201,
-        )
-
-    return JsonResponse(
-        {"errors": form.errors.get_json_data()},
-        status=400,
-    )
-
