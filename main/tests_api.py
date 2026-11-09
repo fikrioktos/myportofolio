@@ -208,6 +208,30 @@ class ExperienceEditorAPITest(APITestCase):
         self.assertEqual(self.client.get(self.list_url).status_code, 200)
         self.assertEqual(self.client.get(self.detail_url).status_code, 200)
 
+    def test_guest_cannot_write_experience(self):
+        """Pengunjung tanpa login ditolak untuk POST, PATCH, dan DELETE, dan row tidak berubah."""
+        before = Experience.objects.count()
+
+        self.assertEqual(
+            self.client.post(self.list_url, self.payload, format="json").status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(
+            self.client.patch(
+                self.detail_url, {"role": "Changed"}, format="json"
+            ).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(
+            self.client.delete(self.detail_url).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+        self.assertEqual(Experience.objects.count(), before)
+        self.experience.refresh_from_db()
+        self.assertEqual(self.experience.title, "Internship")
+        self.assertEqual(self.experience.role, "Backend Intern")
+
     def test_editor_can_patch_but_not_create_or_delete(self):
         self.client.force_authenticate(user=self.editor)
         response = self.client.patch(
@@ -233,6 +257,8 @@ class ExperienceEditorAPITest(APITestCase):
             self.detail_url, {"role": "Changed"}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.experience.refresh_from_db()
+        self.assertEqual(self.experience.role, "Backend Intern")
 
     def test_star_requires_login_and_toggles(self):
         self.assertEqual(
@@ -245,3 +271,130 @@ class ExperienceEditorAPITest(APITestCase):
         self.assertEqual(response.data["star_count"], 1)
         response = self.client.post(self.star_url)
         self.assertEqual(response.data["star_count"], 0)
+
+
+class ExperienceOwnerAPITest(APITestCase):
+    """Pemilik portofolio (superuser): create, delete, validasi, dan CSRF untuk Experience."""
+
+    def setUp(self):
+        # Bersihkan hasil seed migration dulu supaya test hermetic
+        Project.objects.all().delete()
+        Experience.objects.all().delete()
+        self.owner = User.objects.create_superuser(
+            username="owner", password="test-password", email="owner@example.com",
+        )
+        self.experience = Experience.objects.create(
+            title="Internship", role="Backend Intern", description="Work",
+            category="internship", started_at="2026-01-01",
+        )
+        self.list_url = reverse("api:experience-list")
+        self.detail_url = reverse("api:experience-detail", args=[self.experience.id])
+        self.payload = {
+            "title": "New role", "role": "Engineer", "organization": "UI",
+            "description": "Description", "category": "internship",
+            "thumbnail": "", "organization_url": "",
+            "started_at": "2026-02-01", "ended_at": None,
+        }
+
+    def test_owner_can_create_experience(self):
+        self.client.force_authenticate(user=self.owner)
+        before = Experience.objects.count()
+
+        response = self.client.post(self.list_url, self.payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Experience.objects.count(), before + 1)
+        self.assertTrue(Experience.objects.filter(pk=response.data["id"]).exists())
+
+    def test_owner_can_delete_experience(self):
+        self.client.force_authenticate(user=self.owner)
+
+        response = self.client.delete(self.detail_url)
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Experience.objects.filter(pk=self.experience.id).exists())
+
+    def test_blank_title_is_rejected_and_not_saved(self):
+        self.client.force_authenticate(user=self.owner)
+        before = Experience.objects.count()
+
+        response = self.client.post(
+            self.list_url, {**self.payload, "title": " "}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("title", response.data)
+        self.assertEqual(Experience.objects.count(), before)
+
+    def test_html_only_title_is_rejected(self):
+        self.client.force_authenticate(user=self.owner)
+
+        response = self.client.post(
+            self.list_url,
+            {**self.payload, "title": "<img src=x onerror=alert(1)>"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("title", response.data)
+        self.assertFalse(Experience.objects.filter(title__contains="onerror").exists())
+
+    def test_ended_before_started_is_rejected_and_not_saved(self):
+        self.client.force_authenticate(user=self.owner)
+        before = Experience.objects.count()
+
+        response = self.client.post(
+            self.list_url,
+            {**self.payload, "started_at": "2026-06-01", "ended_at": "2026-01-01"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("ended_at", response.data)
+        self.assertEqual(Experience.objects.count(), before)
+
+    def test_patch_with_invalid_dates_keeps_database_unchanged(self):
+        self.client.force_authenticate(user=self.owner)
+
+        response = self.client.patch(
+            self.detail_url,
+            {"started_at": "2026-06-01", "ended_at": "2026-01-01"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.experience.refresh_from_db()
+        self.assertEqual(str(self.experience.started_at), "2026-01-01")
+        self.assertIsNone(self.experience.ended_at)
+
+    def test_session_write_without_csrf_is_rejected(self):
+        client = APIClient(enforce_csrf_checks=True)
+        self.assertTrue(client.login(username="owner", password="test-password"))
+
+        response = client.post(self.list_url, self.payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(Experience.objects.count(), 1)
+
+    def test_session_write_with_csrf_succeeds(self):
+        client = APIClient(enforce_csrf_checks=True)
+        client.login(username="owner", password="test-password")
+        client.get(self.list_url, HTTP_ACCEPT="text/html")
+        token = client.cookies["csrftoken"].value
+
+        response = client.post(
+            self.list_url, self.payload, format="json", HTTP_X_CSRFTOKEN=token,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Experience.objects.count(), 2)
+
+    def test_session_patch_without_csrf_is_rejected(self):
+        client = APIClient(enforce_csrf_checks=True)
+        client.login(username="owner", password="test-password")
+
+        response = client.patch(self.detail_url, {"role": "X"}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.experience.refresh_from_db()
+        self.assertEqual(self.experience.role, "Backend Intern")
