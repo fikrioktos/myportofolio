@@ -57,19 +57,35 @@ class ProjectAPITest(APITestCase):
         )
 
     def test_guest_and_visitor_cannot_write(self):
-        for user in (None, self.visitor):
-            self.client.force_authenticate(user=user)
-            self.assertEqual(
-                self.client.post(self.list_url, self.payload, format="json").status_code,
-                403,
-            )
-            self.assertEqual(
-                self.client.patch(
-                    self.detail_url, {"title": "Changed"}, format="json"
-                ).status_code,
-                403,
-            )
-            self.assertEqual(self.client.delete(self.detail_url).status_code, 403)
+        # TokenAuthentication duluan di DEFAULT_AUTHENTICATION_CLASSES
+        # (Tutorial 10), jadi request tanpa autentikasi = 401, bukan 403.
+        self.assertEqual(
+            self.client.post(self.list_url, self.payload, format="json").status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+        self.assertEqual(
+            self.client.patch(
+                self.detail_url, {"title": "Changed"}, format="json"
+            ).status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+        self.assertEqual(
+            self.client.delete(self.detail_url).status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+        # Sudah login tapi bukan owner/editor tetap 403.
+        self.client.force_authenticate(user=self.visitor)
+        self.assertEqual(
+            self.client.post(self.list_url, self.payload, format="json").status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.patch(
+                self.detail_url, {"title": "Changed"}, format="json"
+            ).status_code,
+            403,
+        )
+        self.assertEqual(self.client.delete(self.detail_url).status_code, 403)
         self.assertEqual(Project.objects.count(), 1)
         self.project.refresh_from_db()
         self.assertEqual(self.project.title, "Portfolio")
@@ -118,9 +134,10 @@ class ProjectAPITest(APITestCase):
         self.assertFalse(Project.objects.filter(pk=self.project.id).exists())
 
     def test_star_requires_login_and_toggles(self):
+        # Tanpa autentikasi = 401 (TokenAuthentication duluan, Tutorial 10).
         self.assertEqual(
             self.client.post(self.star_url).status_code,
-            status.HTTP_403_FORBIDDEN,
+            status.HTTP_401_UNAUTHORIZED,
         )
         self.client.force_authenticate(user=self.visitor)
         response = self.client.post(self.star_url)
@@ -212,19 +229,21 @@ class ExperienceEditorAPITest(APITestCase):
         """Pengunjung tanpa login ditolak untuk POST, PATCH, dan DELETE, dan row tidak berubah."""
         before = Experience.objects.count()
 
+        # Tanpa autentikasi = 401 (TokenAuthentication duluan, Tutorial 10),
+        # bukan 403; row tidak berubah.
         self.assertEqual(
             self.client.post(self.list_url, self.payload, format="json").status_code,
-            status.HTTP_403_FORBIDDEN,
+            status.HTTP_401_UNAUTHORIZED,
         )
         self.assertEqual(
             self.client.patch(
                 self.detail_url, {"role": "Changed"}, format="json"
             ).status_code,
-            status.HTTP_403_FORBIDDEN,
+            status.HTTP_401_UNAUTHORIZED,
         )
         self.assertEqual(
             self.client.delete(self.detail_url).status_code,
-            status.HTTP_403_FORBIDDEN,
+            status.HTTP_401_UNAUTHORIZED,
         )
 
         self.assertEqual(Experience.objects.count(), before)
@@ -261,9 +280,10 @@ class ExperienceEditorAPITest(APITestCase):
         self.assertEqual(self.experience.role, "Backend Intern")
 
     def test_star_requires_login_and_toggles(self):
+        # Tanpa autentikasi = 401 (TokenAuthentication duluan, Tutorial 10).
         self.assertEqual(
             self.client.post(self.star_url).status_code,
-            status.HTTP_403_FORBIDDEN,
+            status.HTTP_401_UNAUTHORIZED,
         )
         self.client.force_authenticate(user=self.visitor)
         response = self.client.post(self.star_url)
